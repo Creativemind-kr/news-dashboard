@@ -1,4 +1,4 @@
-import type { Category, HotTopic, CompetitorItem, NewsItem } from "@/lib/fetchNews";
+import type { Category, HotTopic, CompetitorGroup, NewsItem } from "@/lib/fetchNews";
 
 export interface Top5Item extends NewsItem {
   catLabel: string;
@@ -21,9 +21,7 @@ export function extractTop5FromHotTopics(topics: HotTopic[]): Top5Item[] {
   return topics.slice(0, 5).map((t) => ({ ...t, catLabel: t.tag }));
 }
 
-export function extractTop5FromCompetitors(
-  competitors: { name: string; news: CompetitorItem[] }[]
-): Top5Item[] {
+export function extractTop5FromCompetitors(competitors: CompetitorGroup[]): Top5Item[] {
   const primary = competitors
     .filter((c) => c.news.length > 0)
     .map((c) => ({ ...c.news[0], catLabel: c.name }));

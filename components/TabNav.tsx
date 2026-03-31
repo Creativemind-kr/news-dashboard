@@ -10,7 +10,7 @@ import {
   extractTop5FromHotTopics,
   extractTop5FromCompetitors,
 } from "@/lib/top5";
-import type { Category, HotTopic, CompetitorItem } from "@/lib/fetchNews";
+import type { Category, HotTopic, CompetitorGroup } from "@/lib/fetchNews";
 
 const TABS = [
   { id: "daily", label: "📅 전일 뉴스" },
@@ -29,7 +29,7 @@ type CacheData = {
   weekly?: Category[];
   monthly?: Category[];
   hot?: HotTopic[];
-  competitor?: { name: string; news: CompetitorItem[] }[];
+  competitor?: CompetitorGroup[];
 };
 
 export function TabNav({ daily }: Props) {

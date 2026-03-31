@@ -63,12 +63,26 @@ export interface HotTopic extends NewsItem {
 
 export interface CompetitorItem extends NewsItem {}
 
-const COMPETITORS = [
-  { name: "이젠아카데미", query: "이젠아카데미" },
-  { name: "그린컴퓨터아카데미", query: "그린컴퓨터아카데미" },
-  { name: "더조은컴퓨터아카데미", query: "더조은컴퓨터아카데미" },
-  { name: "KH정보교육원", query: "KH정보교육원" },
-  { name: "패스트캠퍼스", query: "패스트캠퍼스 교육" },
+export interface CompetitorGroup {
+  group: "충청권" | "온라인";
+  name: string;
+  news: CompetitorItem[];
+}
+
+const EDU_KEYWORDS = ["교육", "강의", "취업", "수강", "커리큘럼", "강좌", "훈련", "학원", "수업", "과정", "디자인", "IT", "개발"];
+
+const COMPETITORS_LOCAL = [
+  { name: "이젠아카데미", query: "이젠아카데미 교육 디자인 IT", region: "대전" },
+  { name: "그린컴퓨터아카데미", query: "그린컴퓨터아카데미 교육 IT 취업", region: "대전" },
+  { name: "더조은컴퓨터아카데미", query: "더조은컴퓨터아카데미 교육 IT", region: "충청" },
+  { name: "KH정보교육원", query: "KH정보교육원 교육 개발 취업", region: "충청" },
+];
+
+const COMPETITORS_ONLINE = [
+  { name: "패스트캠퍼스", query: "패스트캠퍼스 교육 강의 온라인" },
+  { name: "코드스테이츠", query: "코드스테이츠 교육 부트캠프 취업" },
+  { name: "멀티캠퍼스", query: "멀티캠퍼스 교육 IT 강의" },
+  { name: "에이블스쿨", query: "에이블스쿨 AI 교육 취업" },
 ];
 
 function isRelevant(item: NewsItem, keywords: string[]): boolean {
@@ -143,13 +157,23 @@ export async function getMonthlyTop(): Promise<Category[]> {
   return results;
 }
 
-export async function getCompetitorNews(): Promise<{ name: string; news: CompetitorItem[] }[]> {
-  const results = [];
-  for (const comp of COMPETITORS) {
-    const items = await fetchNaver(comp.query, 3, "date");
-    results.push({ name: comp.name, news: items });
+export async function getCompetitorNews(): Promise<CompetitorGroup[]> {
+  const results: CompetitorGroup[] = [];
+
+  for (const comp of COMPETITORS_LOCAL) {
+    const raw = await fetchNaver(comp.query, 8, "date");
+    const filtered = raw.filter((item) => isRelevant(item, EDU_KEYWORDS)).slice(0, 3);
+    results.push({ group: "충청권", name: comp.name, news: filtered.length > 0 ? filtered : raw.slice(0, 3) });
     await delay(200);
   }
+
+  for (const comp of COMPETITORS_ONLINE) {
+    const raw = await fetchNaver(comp.query, 8, "date");
+    const filtered = raw.filter((item) => isRelevant(item, EDU_KEYWORDS)).slice(0, 3);
+    results.push({ group: "온라인", name: comp.name, news: filtered.length > 0 ? filtered : raw.slice(0, 3) });
+    await delay(200);
+  }
+
   return results;
 }
 

@@ -15,6 +15,6 @@ export async function GET(req: Request) {
   else data = await getDailyNews();
 
   return NextResponse.json(data, {
-    headers: { "Cache-Control": "s-maxage=1800, stale-while-revalidate=86400" },
+    headers: { "Cache-Control": "s-maxage=3600, stale-while-revalidate=86400" },
   });
 }

@@ -38,10 +38,14 @@ const HEADERS = {
 
 async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, {
       headers: HEADERS,
       next: { revalidate: 1800 },
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) return "";
     if (encoding === "euc-kr") {
       const buf = await res.arrayBuffer();

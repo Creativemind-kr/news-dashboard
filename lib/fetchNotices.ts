@@ -168,7 +168,7 @@ async function fetchMoel(): Promise<Notice[]> {
     );
     if (!res.ok) return [];
     const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.slice(0, 5).map((item) => ({
+    return items.filter((item) => item.title.startsWith("[공고]")).slice(0, 5).map((item) => ({
       title: item.title,
       date: item.date,
       link: item.link,

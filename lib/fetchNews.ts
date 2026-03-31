@@ -49,6 +49,16 @@ export interface HotTopic extends NewsItem {
   tag: string;
 }
 
+export interface CompetitorItem extends NewsItem {}
+
+const COMPETITORS = [
+  { name: "이젠아카데미", query: "이젠아카데미" },
+  { name: "그린컴퓨터아카데미", query: "그린컴퓨터아카데미" },
+  { name: "더조은컴퓨터아카데미", query: "더조은컴퓨터아카데미" },
+  { name: "KH정보교육원", query: "KH정보교육원" },
+  { name: "패스트캠퍼스", query: "패스트캠퍼스 교육" },
+];
+
 function isRelevant(item: NewsItem, keywords: string[]): boolean {
   const text = (item.title + " " + item.summary).toLowerCase();
   return keywords.some((kw) => text.includes(kw.toLowerCase()));
@@ -116,6 +126,16 @@ export async function getMonthlyTop(): Promise<Category[]> {
   const results: Category[] = [];
   for (const cat of CATEGORIES) {
     results.push(await fetchCategory(cat, "sim", "월간"));
+    await delay(200);
+  }
+  return results;
+}
+
+export async function getCompetitorNews(): Promise<{ name: string; news: CompetitorItem[] }[]> {
+  const results = [];
+  for (const comp of COMPETITORS) {
+    const items = await fetchNaver(comp.query, 3, "date");
+    results.push({ name: comp.name, news: items });
     await delay(200);
   }
   return results;

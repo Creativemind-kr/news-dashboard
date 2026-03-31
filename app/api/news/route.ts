@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDailyNews, getWeeklyTop, getMonthlyTop, getHotTopics2026 } from "@/lib/fetchNews";
+import { getDailyNews, getWeeklyTop, getMonthlyTop, getHotTopics2026, getCompetitorNews } from "@/lib/fetchNews";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   if (type === "weekly") data = await getWeeklyTop();
   else if (type === "monthly") data = await getMonthlyTop();
   else if (type === "hot") data = await getHotTopics2026();
+  else if (type === "competitor") data = await getCompetitorNews();
   else data = await getDailyNews();
 
   return NextResponse.json(data, {

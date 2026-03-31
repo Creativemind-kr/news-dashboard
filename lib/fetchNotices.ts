@@ -159,10 +159,10 @@ async function fetchCqnet(): Promise<Notice[]> {
   }
 }
 
-// 고용노동부 — RSS 피드 파싱 (Cloudflare Worker 경유)
+// 고용노동부 — RSS 피드 직접 파싱 (moel.go.kr은 Cloudflare 차단)
 async function fetchMoel(): Promise<Notice[]> {
   try {
-    const xml = await fetchHtml(`${PROXY}?url=${encodeURIComponent("https://www.moel.go.kr/rss/notice.do")}`);
+    const xml = await fetchHtml("https://www.moel.go.kr/rss/notice.do");
     if (!xml) return [];
     const $ = cheerio.load(xml, { xmlMode: true });
     const notices: Notice[] = [];

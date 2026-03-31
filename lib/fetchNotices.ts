@@ -60,20 +60,25 @@ async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
   }
 }
 
-// 심사평가원
-async function fetchHira(): Promise<Notice[]> {
-  const base = "https://www.hira.or.kr";
-  const html = await fetchHtml(`${base}/bbsDummy.do?pgmid=HIRAA020002000100`);
+// 직업능력심사평가원 (ksqa.or.kr)
+async function fetchKsqa(): Promise<Notice[]> {
+  const base = "https://www.ksqa.or.kr";
+  const html = await fetchHtml(`${base}/?pid=HP010101`);
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
-    const title = a.text().trim();
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td").eq(3).text());
+  $("tr").each((_, el) => {
+    const subjectTd = $(el).find("td.list_subject");
+    if (!subjectTd.length) return;
+    const href = subjectTd.find("a").attr("href") ?? "";
+    const nttMatch = href.match(/nttId=(\d+)/);
+    const title = subjectTd.text().trim();
+    const date = parseDate($(el).find("td").last().text());
     if (!title || title.length < 3) return;
-    notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
+    const link = nttMatch
+      ? `${base}/?bbsMode=view&bbsId=BBSMSTR_000000000021&nttId=${nttMatch[1]}&pid=HP010101`
+      : `${base}/?pid=HP010101`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }
@@ -149,40 +154,25 @@ async function fetchCqnet(): Promise<Notice[]> {
   }
 }
 
-// 고용노동부 — 여러 URL 시도 + 강화된 헤더
+// 고용노동부 — RSS 피드 파싱
 async function fetchMoel(): Promise<Notice[]> {
-  const base = "https://www.moel.go.kr";
-  const candidates = [
-    `${base}/news/notice/listView.do`,
-    `${base}/news/notice/noticeList.do`,
-    `${base}/info/notice/list.do`,
-  ];
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, {
-        headers: {
-          ...HEADERS,
-          "Referer": base,
-          "Connection": "keep-alive",
-        },
-        next: { revalidate: 1800 },
-      });
-      if (!res.ok) continue;
-      const html = await res.text();
-      const $ = cheerio.load(html);
-      const notices: Notice[] = [];
-      $("table tbody tr").each((_, el) => {
-        const a = $(el).find("td a").first();
-        const title = a.text().trim();
-        const href = a.attr("href") ?? "";
-        const date = parseDate($(el).find("td").last().text());
-        if (!title || title.length < 3) return;
-        notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
-      });
-      if (notices.length > 0) return notices.slice(0, 5);
-    } catch { continue; }
+  try {
+    const xml = await fetchHtml("https://www.moel.go.kr/rss/notice.do");
+    if (!xml) return [];
+    const $ = cheerio.load(xml, { xmlMode: true });
+    const notices: Notice[] = [];
+    $("item").each((_, el) => {
+      const title = $(el).find("title").text().trim();
+      const link = $(el).find("link").text().trim();
+      const dateStr = $(el).find("dc\\:date").text().trim();
+      const date = dateStr.slice(0, 10);
+      if (!title || title.length < 3) return;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch {
+    return [];
   }
-  return [];
 }
 
 // 산업인력공단 — EUC-KR 강제 디코딩
@@ -207,7 +197,7 @@ async function fetchHrdkorea(): Promise<Notice[]> {
 }
 
 const SOURCES = [
-  { id: "hira",  name: "심사평가원",    url: "https://www.hira.or.kr",     fetch: fetchHira },
+  { id: "hira",  name: "심사평가원",    url: "https://www.ksqa.or.kr/?pid=HP010101",     fetch: fetchKsqa },
   { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",     fetch: fetchCepa },
   { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",    fetch: fetchQnet },
   { id: "cqnet", name: "CQ-net",        url: "https://c.q-net.or.kr",      fetch: fetchCqnet },

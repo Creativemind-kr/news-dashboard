@@ -210,10 +210,13 @@ const SOURCES = [
 ];
 
 export async function getAllNotices(): Promise<NoticeSource[]> {
-  const results: NoticeSource[] = [];
-  for (const s of SOURCES) {
-    const notices = await s.fetch();
-    results.push({ id: s.id, name: s.name, url: s.url, notices });
-  }
+  const results = await Promise.all(
+    SOURCES.map(async (s) => ({
+      id: s.id,
+      name: s.name,
+      url: s.url,
+      notices: await s.fetch(),
+    }))
+  );
   return results;
 }

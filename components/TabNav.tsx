@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { HotTopicsView } from "@/components/HotTopicsView";
 import { CompetitorNews } from "@/components/CompetitorNews";
+import { Top5Sidebar } from "@/components/Top5Sidebar";
+import {
+  extractTop5FromCategories,
+  extractTop5FromHotTopics,
+  extractTop5FromCompetitors,
+} from "@/lib/top5";
 import type { Category, HotTopic, CompetitorItem } from "@/lib/fetchNews";
 
 const TABS = [
@@ -32,23 +38,25 @@ export function TabNav({ daily }: Props) {
   const [cache, setCache] = useState<CacheData>({ daily });
   const prefetchedRef = useRef(false);
 
-  const fetchTab = useCallback(async (type: string) => {
-    if (cache[type as keyof CacheData]) return;
-    setLoadingTab(type);
-    try {
-      const res = await fetch(`/api/news?type=${type}`);
-      const data = await res.json();
-      setCache((prev) => ({ ...prev, [type]: data }));
-    } finally {
-      setLoadingTab(null);
-    }
-  }, [cache]);
+  const fetchTab = useCallback(
+    async (type: string) => {
+      if (cache[type as keyof CacheData]) return;
+      setLoadingTab(type);
+      try {
+        const res = await fetch(`/api/news?type=${type}`);
+        const data = await res.json();
+        setCache((prev) => ({ ...prev, [type]: data }));
+      } finally {
+        setLoadingTab(null);
+      }
+    },
+    [cache]
+  );
 
-  // 백그라운드 프리패치: 초기 로드 후 나머지 탭 미리 로드
+  // 백그라운드 프리패치
   useEffect(() => {
     if (prefetchedRef.current) return;
     prefetchedRef.current = true;
-
     const prefetch = async () => {
       await new Promise((r) => setTimeout(r, 1500));
       for (const tab of ["weekly", "monthly", "hot", "competitor"]) {
@@ -69,7 +77,18 @@ export function TabNav({ daily }: Props) {
 
   const isLoading = loadingTab === active;
 
-  const renderContent = () => {
+  // Top5 추출
+  const getTop5 = () => {
+    if (active === "hot" && cache.hot) return extractTop5FromHotTopics(cache.hot);
+    if (active === "competitor" && cache.competitor) return extractTop5FromCompetitors(cache.competitor);
+    const cats = cache[active as keyof CacheData] as Category[] | undefined;
+    if (cats) return extractTop5FromCategories(cats);
+    return [];
+  };
+
+  const top5 = getTop5();
+
+  const renderMain = () => {
     if (isLoading) {
       return (
         <div className="flex items-center justify-center py-24">
@@ -80,7 +99,6 @@ export function TabNav({ daily }: Props) {
         </div>
       );
     }
-
     if (active === "daily" && cache.daily)
       return <CategoryGrid categories={cache.daily} showSummary />;
     if (active === "weekly" && cache.weekly)
@@ -91,7 +109,6 @@ export function TabNav({ daily }: Props) {
       return <HotTopicsView topics={cache.hot} />;
     if (active === "competitor" && cache.competitor)
       return <CompetitorNews competitors={cache.competitor} />;
-
     return (
       <div className="flex items-center justify-center py-24">
         <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -103,7 +120,7 @@ export function TabNav({ daily }: Props) {
     <div>
       {/* Tab Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -115,7 +132,6 @@ export function TabNav({ daily }: Props) {
               }`}
             >
               {tab.label}
-              {/* 프리패치 완료 표시 */}
               {cache[tab.id as keyof CacheData] && tab.id !== active && (
                 <span className="absolute top-3 right-2 w-1.5 h-1.5 bg-green-400 rounded-full" />
               )}
@@ -124,7 +140,15 @@ export function TabNav({ daily }: Props) {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">{renderContent()}</div>
+      {/* Content: 좌측 뉴스 + 우측 Top5 */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">{renderMain()}</div>
+          <div className="lg:col-span-1">
+            {top5.length > 0 && <Top5Sidebar items={top5} />}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -159,25 +159,21 @@ async function fetchCqnet(): Promise<Notice[]> {
   }
 }
 
-// 고용노동부 — RSS 피드 직접 파싱 (moel.go.kr은 Cloudflare 차단)
+// 고용노동부 — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
 async function fetchMoel(): Promise<Notice[]> {
   try {
-    const xml = await fetchHtml("https://www.moel.go.kr/rss/notice.do");
-    if (!xml) return [];
-    const $ = cheerio.load(xml, { xmlMode: true });
-    const notices: Notice[] = [];
-    $("item").each((_, el) => {
-      const title = $(el).find("title").text().trim();
-      const link = $(el).find("link").text().trim();
-      let dateStr = "";
-      $(el).children().each((_, c) => {
-        if (($(c).prop("tagName") ?? "").toUpperCase() === "DC:DATE") dateStr = $(c).text().trim();
-      });
-      const date = dateStr.slice(0, 10);
-      if (!title || title.length < 3) return;
-      notices.push({ title, date, link, isNew: isWithin3Days(date) });
-    });
-    return notices.slice(0, 5);
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/moel-notices.json",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title,
+      date: item.date,
+      link: item.link,
+      isNew: isWithin3Days(item.date),
+    }));
   } catch {
     return [];
   }

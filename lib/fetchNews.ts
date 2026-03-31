@@ -1,6 +1,18 @@
 const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID ?? "";
 const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET ?? "";
 
+function decodeHtml(str: string): string {
+  return str
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
 export const CATEGORIES = [
   {
     id: "design",
@@ -82,8 +94,8 @@ async function fetchNaver(query: string, maxItems = 8, sort: "sim" | "date" = "d
     if (!res.ok) return [];
     const data = await res.json();
     return (data.items ?? []).map((item: { title: string; description: string; originallink: string; link: string; pubDate: string }) => ({
-      title: item.title.replace(/<[^>]+>/g, ""),
-      summary: item.description.replace(/<[^>]+>/g, "").slice(0, 120),
+      title: decodeHtml(item.title),
+      summary: decodeHtml(item.description).slice(0, 120),
       source: (() => {
         try { return new URL(item.originallink || item.link).hostname.replace("www.", ""); } catch { return "네이버뉴스"; }
       })(),

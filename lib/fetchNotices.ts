@@ -211,7 +211,7 @@ const SOURCES = [
   { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",     fetch: fetchCepa },
   { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",    fetch: fetchQnet },
   { id: "cqnet", name: "CQ-net",        url: "https://c.q-net.or.kr",      fetch: fetchCqnet },
-  { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr",     fetch: fetchMoel },
+  { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr/news/notice/noticeList.do",     fetch: fetchMoel },
   { id: "hrd",   name: "산업인력공단",  url: "https://www.hrdkorea.or.kr", fetch: fetchHrdkorea },
 ];
 

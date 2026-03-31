@@ -128,10 +128,10 @@ async function fetchQnet(): Promise<Notice[]> {
   return results;
 }
 
-// ─── 시큐넷 (KISIA 한국정보보호산업협회) ────────────────────────────────────
+// ─── 시큐넷 ──────────────────────────────────────────────────────────────────
 async function fetchSecunet(): Promise<Notice[]> {
-  const url = "https://www.kisia.or.kr/main/sub.php?menukey=23&auto=1";
-  const base = "https://www.kisia.or.kr";
+  const url = "https://c.q-net.or.kr/support/noticeList.do";
+  const base = "https://c.q-net.or.kr";
   const res = await fetch(url, { headers: HEADERS, cache: "no-store" });
   const html = await res.text();
   const $ = cheerio.load(html);
@@ -243,7 +243,7 @@ const SOURCES: Array<{
   {
     id: "secunet",
     name: "시큐넷",
-    siteUrl: "https://www.kisia.or.kr/main/sub.php?menukey=23&auto=1",
+    siteUrl: "https://c.q-net.or.kr/support/noticeList.do",
     color: "purple",
     emoji: "🔒",
     fetch: fetchSecunet,

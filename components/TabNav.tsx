@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { HotTopicsView } from "@/components/HotTopicsView";
 import { CompetitorNews } from "@/components/CompetitorNews";
+import { NoticeBoard } from "@/components/NoticeBoard";
 import { Top5Sidebar } from "@/components/Top5Sidebar";
 import {
   extractTop5FromCategories,
@@ -11,20 +12,24 @@ import {
   extractTop5FromCompetitors,
 } from "@/lib/top5";
 import type { Category, HotTopic, CompetitorGroup } from "@/lib/fetchNews";
+import type { NoticeSource } from "@/lib/fetchNotices";
 
 const TABS = [
-  { id: "daily", label: "📅 전일 뉴스" },
-  { id: "weekly", label: "📊 주차별 Top" },
-  { id: "monthly", label: "🗓 월차별 Top" },
-  { id: "hot", label: "🔥 2026 핫토픽" },
+  { id: "notice",     label: "📌 사업공고" },
+  { id: "daily",      label: "📅 전일 뉴스" },
+  { id: "weekly",     label: "📊 주차별 Top" },
+  { id: "monthly",    label: "🗓 월차별 Top" },
+  { id: "hot",        label: "🔥 2026 핫토픽" },
   { id: "competitor", label: "🏫 경쟁사 동향" },
 ];
 
 interface Props {
   daily: Category[];
+  notices: NoticeSource[];
 }
 
 type CacheData = {
+  notice?: NoticeSource[];
   daily?: Category[];
   weekly?: Category[];
   monthly?: Category[];
@@ -32,34 +37,30 @@ type CacheData = {
   competitor?: CompetitorGroup[];
 };
 
-export function TabNav({ daily }: Props) {
-  const [active, setActive] = useState("daily");
+export function TabNav({ daily, notices }: Props) {
+  const [active, setActive] = useState("notice");
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
-  const [cache, setCache] = useState<CacheData>({ daily });
+  const [cache, setCache] = useState<CacheData>({ daily, notice: notices });
   const prefetchedRef = useRef(false);
 
-  const fetchTab = useCallback(
-    async (type: string) => {
-      if (cache[type as keyof CacheData]) return;
-      setLoadingTab(type);
-      try {
-        const res = await fetch(`/api/news?type=${type}`);
-        const data = await res.json();
-        setCache((prev) => ({ ...prev, [type]: data }));
-      } finally {
-        setLoadingTab(null);
-      }
-    },
-    [cache]
-  );
+  const fetchTab = useCallback(async (type: string) => {
+    if (cache[type as keyof CacheData]) return;
+    setLoadingTab(type);
+    try {
+      const res = await fetch(`/api/news?type=${type}`);
+      const data = await res.json();
+      setCache((prev) => ({ ...prev, [type]: data }));
+    } finally {
+      setLoadingTab(null);
+    }
+  }, [cache]);
 
-  // 백그라운드 프리패치
   useEffect(() => {
     if (prefetchedRef.current) return;
     prefetchedRef.current = true;
     const prefetch = async () => {
-      await new Promise((r) => setTimeout(r, 1500));
-      for (const tab of ["weekly", "monthly", "hot", "competitor"]) {
+      await new Promise((r) => setTimeout(r, 2000));
+      for (const tab of ["daily", "weekly", "monthly", "hot", "competitor"]) {
         await fetch(`/api/news?type=${tab}`)
           .then((r) => r.json())
           .then((data) => setCache((prev) => ({ ...prev, [tab]: data })))
@@ -77,8 +78,8 @@ export function TabNav({ daily }: Props) {
 
   const isLoading = loadingTab === active;
 
-  // Top5 추출
   const getTop5 = () => {
+    if (active === "notice") return [];
     if (active === "hot" && cache.hot) return extractTop5FromHotTopics(cache.hot);
     if (active === "competitor" && cache.competitor) return extractTop5FromCompetitors(cache.competitor);
     const cats = cache[active as keyof CacheData] as Category[] | undefined;
@@ -87,18 +88,12 @@ export function TabNav({ daily }: Props) {
   };
 
   const top5 = getTop5();
+  const showSidebar = active !== "notice" && top5.length > 0;
 
   const renderMain = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center py-24">
-          <div className="text-center">
-            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-400">뉴스 불러오는 중...</p>
-          </div>
-        </div>
-      );
-    }
+    if (isLoading) return <Spinner />;
+    if (active === "notice" && cache.notice)
+      return <NoticeBoard sources={cache.notice} />;
     if (active === "daily" && cache.daily)
       return <CategoryGrid categories={cache.daily} showSummary />;
     if (active === "weekly" && cache.weekly)
@@ -109,11 +104,7 @@ export function TabNav({ daily }: Props) {
       return <HotTopicsView topics={cache.hot} />;
     if (active === "competitor" && cache.competitor)
       return <CompetitorNews competitors={cache.competitor} />;
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <Spinner />;
   };
 
   return (
@@ -133,21 +124,34 @@ export function TabNav({ daily }: Props) {
             >
               {tab.label}
               {cache[tab.id as keyof CacheData] && tab.id !== active && (
-                <span className="absolute top-3 right-2 w-1.5 h-1.5 bg-green-400 rounded-full" />
+                <span className="absolute top-3 right-1.5 w-1.5 h-1.5 bg-green-400 rounded-full" />
               )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content: 좌측 뉴스 + 우측 Top5 */}
+      {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">{renderMain()}</div>
-          <div className="lg:col-span-1">
-            {top5.length > 0 && <Top5Sidebar items={top5} />}
+        {showSidebar ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">{renderMain()}</div>
+            <div className="lg:col-span-1"><Top5Sidebar items={top5} /></div>
           </div>
-        </div>
+        ) : (
+          renderMain()
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <div className="text-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm text-gray-400">불러오는 중...</p>
       </div>
     </div>
   );

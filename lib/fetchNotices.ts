@@ -121,9 +121,32 @@ async function fetchQnet(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// CQ-net (한국방송전파진흥원 → 사용자 확인 필요, 임시 비활성)
+// CQ-net (c.q-net.or.kr — JSON API 사용)
 async function fetchCqnet(): Promise<Notice[]> {
-  return [];
+  const base = "https://c.q-net.or.kr";
+  try {
+    const res = await fetch(`${base}/support/noticeList.json?pageIndex=1&pageUnit=5`, {
+      headers: { ...HEADERS, Referer: `${base}/cmn/com/main.do` },
+      next: { revalidate: 1800 },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items: { nttSj: string; nttId: number; frstRegistPnttm: string }[] = [
+      ...(data.fixedNttList ?? []),
+      ...(data.nttList ?? []),
+    ];
+    return items.slice(0, 5).map((item) => {
+      const date = item.frstRegistPnttm?.slice(0, 10) ?? "";
+      return {
+        title: item.nttSj,
+        date,
+        link: `${base}/support/noticeDetail.do?nttId=${item.nttId}`,
+        isNew: isWithin3Days(date),
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 // 고용노동부 — 여러 URL 시도 + 강화된 헤더
@@ -187,7 +210,7 @@ const SOURCES = [
   { id: "hira",  name: "심사평가원",    url: "https://www.hira.or.kr",     fetch: fetchHira },
   { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",     fetch: fetchCepa },
   { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",    fetch: fetchQnet },
-  { id: "cqnet", name: "CQ-net",        url: "https://www.cq.or.kr",       fetch: fetchCqnet },
+  { id: "cqnet", name: "CQ-net",        url: "https://c.q-net.or.kr",      fetch: fetchCqnet },
   { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr",     fetch: fetchMoel },
   { id: "hrd",   name: "산업인력공단",  url: "https://www.hrdkorea.or.kr", fetch: fetchHrdkorea },
 ];

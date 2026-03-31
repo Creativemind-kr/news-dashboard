@@ -1,0 +1,41 @@
+name: Fetch Moel Notices
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch moel RSS and save JSON
+        run: |
+          XML=$(curl -s --max-time 15 "https://www.moel.go.kr/rss/notice.do")
+          node -e "
+            const xml = \`$XML\`;
+            const items = xml.split('<item>').slice(1);
+            const notices = items.slice(0,5).map(block => {
+              const title = (block.match(/CDATA\[([\s\S]*?)\]\]/) || [])[1]?.trim() || '';
+              const link  = (block.match(/<link>([\s\S]*?)<\/link>/) || [])[1]?.trim() || '';
+              const date  = (block.match(/<dc:date>([\s\S]*?)<\/dc:date>/) || [])[1]?.trim().slice(0,10) || '';
+              return { title, link, date };
+            }).filter(n => n.title.length > 2);
+            require('fs').writeFileSync('moel-notices.json', JSON.stringify(notices));
+          "
+
+      - name: Push to data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin data
+          git checkout data
+          mv $GITHUB_WORKSPACE/../moel-notices.json moel-notices.json 2>/dev/null || true
+          cp /home/runner/work/news-dashboard/news-dashboard/moel-notices.json moel-notices.json 2>/dev/null || true
+          git add moel-notices.json
+          git diff --cached --quiet || git commit -m "update moel notices $(date -u '+%Y-%m-%d %H:%M')"
+          git push origin data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

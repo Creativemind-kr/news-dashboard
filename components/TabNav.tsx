@@ -6,6 +6,7 @@ import { HotTopicsView } from "@/components/HotTopicsView";
 import { CompetitorNews } from "@/components/CompetitorNews";
 import { NoticeBoard } from "@/components/NoticeBoard";
 import { Top5Sidebar } from "@/components/Top5Sidebar";
+import { SchoolCalendar } from "@/components/SchoolCalendar";
 import {
   extractTop5FromCategories,
   extractTop5FromHotTopics,
@@ -132,15 +133,24 @@ export function TabNav({ daily, notices }: Props) {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {showSidebar ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">{renderMain()}</div>
-            <div className="lg:col-span-1"><Top5Sidebar items={top5} /></div>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex gap-4 items-start">
+          {/* 왼쪽 고정: 학사 캘린더 */}
+          <div className="hidden lg:block w-52 shrink-0 sticky top-[57px]">
+            <SchoolCalendar />
           </div>
-        ) : (
-          renderMain()
-        )}
+          {/* 메인 콘텐츠 */}
+          <div className="flex-1 min-w-0">
+            {showSidebar ? (
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2">{renderMain()}</div>
+                <div className="xl:col-span-1"><Top5Sidebar items={top5} /></div>
+              </div>
+            ) : (
+              renderMain()
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

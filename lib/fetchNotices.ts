@@ -60,11 +60,13 @@ async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
   }
 }
 
-// 직업능력심사평가원 (ksqa.or.kr)
+const PROXY = "https://ksqa-proxy.dbgustjr4799.workers.dev";
+
+// 직업능력심사평가원 (ksqa.or.kr) — Cloudflare Worker 경유
 async function fetchKsqa(): Promise<Notice[]> {
   const base = "https://www.ksqa.or.kr";
   try {
-    const html = await fetchHtml(`${base}/?pid=HP010101`);
+    const html = await fetchHtml(`${PROXY}?url=${encodeURIComponent(`${base}/?pid=HP010101`)}`);
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
@@ -157,10 +159,10 @@ async function fetchCqnet(): Promise<Notice[]> {
   }
 }
 
-// 고용노동부 — RSS 피드 파싱
+// 고용노동부 — RSS 피드 파싱 (Cloudflare Worker 경유)
 async function fetchMoel(): Promise<Notice[]> {
   try {
-    const xml = await fetchHtml("https://www.moel.go.kr/rss/notice.do");
+    const xml = await fetchHtml(`${PROXY}?url=${encodeURIComponent("https://www.moel.go.kr/rss/notice.do")}`);
     if (!xml) return [];
     const $ = cheerio.load(xml, { xmlMode: true });
     const notices: Notice[] = [];

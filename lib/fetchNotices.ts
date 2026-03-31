@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import iconv from "iconv-lite";
 
 export interface Notice {
   title: string;
@@ -18,29 +19,45 @@ function isWithin3Days(dateStr: string): boolean {
   try {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return false;
-    const diff = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
-    return diff <= 3;
+    return (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24) <= 3;
   } catch {
     return false;
-  }
-}
-
-async function fetchHtml(url: string): Promise<string> {
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-      next: { revalidate: 1800 },
-    });
-    if (!res.ok) return "";
-    return await res.text();
-  } catch {
-    return "";
   }
 }
 
 function parseDate(text: string): string {
   const m = text.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+}
+
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ko-KR,ko;q=0.9",
+};
+
+async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: HEADERS,
+      next: { revalidate: 1800 },
+    });
+    if (!res.ok) return "";
+    if (encoding === "euc-kr") {
+      const buf = await res.arrayBuffer();
+      return iconv.decode(Buffer.from(buf), "euc-kr");
+    }
+    const text = await res.text();
+    // Content-Type 헤더로 인코딩 감지
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.toLowerCase().includes("euc-kr")) {
+      const buf = Buffer.from(text, "binary");
+      return iconv.decode(buf, "euc-kr");
+    }
+    return text;
+  } catch {
+    return "";
+  }
 }
 
 // 심사평가원
@@ -56,12 +73,7 @@ async function fetchHira(): Promise<Notice[]> {
     const href = a.attr("href") ?? "";
     const date = parseDate($(el).find("td").eq(3).text());
     if (!title || title.length < 3) return;
-    notices.push({
-      title,
-      date,
-      link: href.startsWith("http") ? href : `${base}${href}`,
-      isNew: isWithin3Days(date),
-    });
+    notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }
@@ -87,78 +99,73 @@ async function fetchCepa(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// Q-net
+// Q-net — onclick에서 artlSeq 추출
 async function fetchQnet(): Promise<Notice[]> {
   const base = "https://www.q-net.or.kr";
-  const html = await fetchHtml(`${base}/cst005.do?id=cst00501&gSite=Q`);
+  const html = await fetchHtml(`${base}/man004.do?id=man00401s01&page=1&notiType=10&gSite=Q`);
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
   $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
-    const title = a.text().trim();
-    const href = a.attr("href") ?? "";
+    const a = $(el).find("td a, td[onclick]").first();
+    const title = a.text().trim() || $(el).find("td").eq(1).text().trim();
+    const onclickAttr = $(el).attr("onclick") ?? a.attr("onclick") ?? "";
+    const seqMatch = onclickAttr.match(/goNext\((\d+)/);
     const date = parseDate($(el).find("td").last().text());
     if (!title || title.length < 3) return;
-    notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
+    const link = seqMatch
+      ? `${base}/man004.do?id=man00402&BOARD_ID=Q001&ARTL_SEQ=${seqMatch[1]}&gSite=Q`
+      : `${base}/man004.do?id=man00401&notiType=10&gSite=Q`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }
 
-// CQ-net
+// CQ-net (한국방송전파진흥원 → 사용자 확인 필요, 임시 비활성)
 async function fetchCqnet(): Promise<Notice[]> {
-  const candidates = [
-    "https://www.cq.or.kr/board/boardList.do?boardId=notice",
-    "https://www.cqnet.or.kr/notice/list.do",
-  ];
-  for (const url of candidates) {
-    const html = await fetchHtml(url);
-    if (!html) continue;
-    const $ = cheerio.load(html);
-    const notices: Notice[] = [];
-    $("table tbody tr").each((_, el) => {
-      const a = $(el).find("a").first();
-      const title = a.text().trim();
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).find("td").last().text());
-      if (!title || title.length < 3) return;
-      const base = new URL(url).origin;
-      notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
-    });
-    if (notices.length > 0) return notices.slice(0, 5);
-  }
   return [];
 }
 
-// 고용노동부
+// 고용노동부 — 여러 URL 시도 + 강화된 헤더
 async function fetchMoel(): Promise<Notice[]> {
   const base = "https://www.moel.go.kr";
   const candidates = [
     `${base}/news/notice/listView.do`,
+    `${base}/news/notice/noticeList.do`,
     `${base}/info/notice/list.do`,
   ];
   for (const url of candidates) {
-    const html = await fetchHtml(url);
-    if (!html) continue;
-    const $ = cheerio.load(html);
-    const notices: Notice[] = [];
-    $("table tbody tr").each((_, el) => {
-      const a = $(el).find("td a").first();
-      const title = a.text().trim();
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).find("td").last().text());
-      if (!title || title.length < 3) return;
-      notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
-    });
-    if (notices.length > 0) return notices.slice(0, 5);
+    try {
+      const res = await fetch(url, {
+        headers: {
+          ...HEADERS,
+          "Referer": base,
+          "Connection": "keep-alive",
+        },
+        next: { revalidate: 1800 },
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      const notices: Notice[] = [];
+      $("table tbody tr").each((_, el) => {
+        const a = $(el).find("td a").first();
+        const title = a.text().trim();
+        const href = a.attr("href") ?? "";
+        const date = parseDate($(el).find("td").last().text());
+        if (!title || title.length < 3) return;
+        notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
+      });
+      if (notices.length > 0) return notices.slice(0, 5);
+    } catch { continue; }
   }
   return [];
 }
 
-// 산업인력공단
+// 산업인력공단 — EUC-KR 강제 디코딩
 async function fetchHrdkorea(): Promise<Notice[]> {
   const base = "https://www.hrdkorea.or.kr";
-  const html = await fetchHtml(`${base}/3/1/1`);
+  const html = await fetchHtml(`${base}/3/1/1`, "euc-kr");
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
@@ -168,18 +175,21 @@ async function fetchHrdkorea(): Promise<Notice[]> {
     const href = a.attr("href") ?? "";
     const date = parseDate($(el).find("td").last().text());
     if (!title || title.length < 3) return;
-    notices.push({ title, date, link: href.startsWith("http") ? href : `${base}${href}`, isNew: isWithin3Days(date) });
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/3/1/1?k=${href.replace(/\D/g, "")}&pageNo=1`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }
 
 const SOURCES = [
-  { id: "hira",  name: "심사평가원",    url: "https://www.hira.or.kr",       fetch: fetchHira },
-  { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",       fetch: fetchCepa },
-  { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",      fetch: fetchQnet },
-  { id: "cqnet", name: "CQ-net",        url: "https://www.cq.or.kr",         fetch: fetchCqnet },
-  { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr",       fetch: fetchMoel },
-  { id: "hrd",   name: "산업인력공단",  url: "https://www.hrdkorea.or.kr",   fetch: fetchHrdkorea },
+  { id: "hira",  name: "심사평가원",    url: "https://www.hira.or.kr",     fetch: fetchHira },
+  { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",     fetch: fetchCepa },
+  { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",    fetch: fetchQnet },
+  { id: "cqnet", name: "CQ-net",        url: "https://www.cq.or.kr",       fetch: fetchCqnet },
+  { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr",     fetch: fetchMoel },
+  { id: "hrd",   name: "산업인력공단",  url: "https://www.hrdkorea.or.kr", fetch: fetchHrdkorea },
 ];
 
 export async function getAllNotices(): Promise<NoticeSource[]> {

@@ -11,29 +11,36 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout data branch
+        uses: actions/checkout@v4
+        with:
+          ref: data
+
       - name: Fetch moel RSS and save JSON
         run: |
-          XML=$(curl -s --max-time 15 "https://www.moel.go.kr/rss/notice.do")
-          node -e "
+          XML=$(curl -sk --max-time 15 "https://www.moel.go.kr/rss/notice.do")
+          echo "=== RAW RSS TITLES ==="
+          echo "$XML" | grep -oP '(?<=<!\[CDATA\[).*?(?=\]\]>)' | head -20
+          JSON=$(node -e "
             const xml = \`$XML\`;
             const items = xml.split('<item>').slice(1);
-            const notices = items.slice(0,5).map(block => {
+            const all = items.slice(0,20).map(block => {
               const title = (block.match(/CDATA\[([\s\S]*?)\]\]/) || [])[1]?.trim() || '';
               const link  = (block.match(/<link>([\s\S]*?)<\/link>/) || [])[1]?.trim() || '';
               const date  = (block.match(/<dc:date>([\s\S]*?)<\/dc:date>/) || [])[1]?.trim().slice(0,10) || '';
               return { title, link, date };
             }).filter(n => n.title.length > 2);
-            require('fs').writeFileSync('moel-notices.json', JSON.stringify(notices));
-          "
+            process.stderr.write('All titles:\n' + all.map(n=>n.title).join('\n') + '\n');
+            const notices = all.filter(n => n.title.startsWith('[공고]')).slice(0,5);
+            process.stdout.write(JSON.stringify(notices));
+          ")
+          echo "Fetched: $JSON"
+          echo "$JSON" > moel-notices.json
 
-      - name: Push to data branch
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin data
-          git checkout data
-          mv $GITHUB_WORKSPACE/../moel-notices.json moel-notices.json 2>/dev/null || true
-          cp /home/runner/work/news-dashboard/news-dashboard/moel-notices.json moel-notices.json 2>/dev/null || true
           git add moel-notices.json
           git diff --cached --quiet || git commit -m "update moel notices $(date -u '+%Y-%m-%d %H:%M')"
           git push origin data

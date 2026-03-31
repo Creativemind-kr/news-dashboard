@@ -2,6 +2,9 @@ import Parser from "rss-parser";
 
 const parser = new Parser();
 
+const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID ?? "";
+const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET ?? "";
+
 export const CATEGORIES = [
   { id: "design", label: "🎨 디자인", query: "디자인 UX UI 트렌드" },
   { id: "ai", label: "🤖 AI", query: "인공지능 AI ChatGPT LLM" },
@@ -34,6 +37,31 @@ export interface HotTopic {
   tag: string;
 }
 
+// 네이버 뉴스 검색 API (정렬 기준: sim=관련도, date=최신순)
+async function fetchNaver(query: string, maxItems = 5, sort: "sim" | "date" = "sim"): Promise<NewsItem[]> {
+  const url = `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(query)}&display=${maxItems}&sort=${sort}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+      },
+      next: { revalidate: 3600 },
+    });
+    const data = await res.json();
+    return (data.items ?? []).map((item: { title: string; description: string; originallink: string; link: string; pubDate: string }) => ({
+      title: item.title.replace(/<[^>]+>/g, ""),
+      summary: item.description.replace(/<[^>]+>/g, "").slice(0, 120),
+      source: new URL(item.originallink || item.link).hostname.replace("www.", ""),
+      link: item.originallink || item.link,
+      date: item.pubDate,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 구글 RSS (fallback)
 async function fetchRSS(query: string, maxItems = 5): Promise<NewsItem[]> {
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`;
   try {
@@ -50,18 +78,22 @@ async function fetchRSS(query: string, maxItems = 5): Promise<NewsItem[]> {
   }
 }
 
+async function fetchNews(query: string, maxItems = 5, sort: "sim" | "date" = "date"): Promise<NewsItem[]> {
+  if (NAVER_CLIENT_ID) {
+    return fetchNaver(query, maxItems, sort);
+  }
+  return fetchRSS(query, maxItems);
+}
+
 function buildSummary(news: NewsItem[]): string {
   if (news.length === 0) return "뉴스를 불러올 수 없습니다.";
-  return news
-    .slice(0, 3)
-    .map((n) => n.title)
-    .join(" · ");
+  return news.slice(0, 3).map((n) => n.title).join(" · ");
 }
 
 export async function getDailyNews(): Promise<Category[]> {
   return Promise.all(
     CATEGORIES.map(async (cat) => {
-      const news = await fetchRSS(cat.query, 5);
+      const news = await fetchNews(cat.query, 5, "date");
       return { ...cat, summary: buildSummary(news), news };
     })
   );
@@ -70,7 +102,7 @@ export async function getDailyNews(): Promise<Category[]> {
 export async function getWeeklyTop(): Promise<Category[]> {
   return Promise.all(
     CATEGORIES.map(async (cat) => {
-      const news = await fetchRSS(`${cat.query} 이번주`, 5);
+      const news = await fetchNews(cat.query, 5, "sim");
       return { ...cat, summary: buildSummary(news), news };
     })
   );
@@ -79,7 +111,7 @@ export async function getWeeklyTop(): Promise<Category[]> {
 export async function getMonthlyTop(): Promise<Category[]> {
   return Promise.all(
     CATEGORIES.map(async (cat) => {
-      const news = await fetchRSS(`${cat.query} 이번달`, 5);
+      const news = await fetchNews(`${cat.query} 월간`, 5, "sim");
       return { ...cat, summary: buildSummary(news), news };
     })
   );
@@ -95,7 +127,7 @@ export async function getHotTopics2026(): Promise<HotTopic[]> {
 
   const results = await Promise.all(
     queries.map(async ({ q, tag }) => {
-      const items = await fetchRSS(q, 3);
+      const items = await fetchNews(q, 3, "sim");
       return items.map((item) => ({ ...item, tag }));
     })
   );

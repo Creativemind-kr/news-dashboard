@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NewsBot",
-  description: "매일 아침 파트별 뉴스 대시보드",
+  title: "사업공고 모니터",
+  description: "주요 기관 사업공고 모아보기",
 };
 
 export default function RootLayout({

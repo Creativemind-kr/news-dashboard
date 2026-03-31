@@ -63,24 +63,27 @@ async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
 // 직업능력심사평가원 (ksqa.or.kr)
 async function fetchKsqa(): Promise<Notice[]> {
   const base = "https://www.ksqa.or.kr";
-  const html = await fetchHtml(`${base}/?pid=HP010101`);
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("tr").each((_, el) => {
-    const subjectTd = $(el).find("td.list_subject");
-    if (!subjectTd.length) return;
-    const href = subjectTd.find("a").attr("href") ?? "";
-    const nttMatch = href.match(/nttId=(\d+)/);
-    const title = subjectTd.text().trim();
-    const date = parseDate($(el).find("td").last().text());
-    if (!title || title.length < 3) return;
-    const link = nttMatch
-      ? `${base}/?bbsMode=view&bbsId=BBSMSTR_000000000021&nttId=${nttMatch[1]}&pid=HP010101`
-      : `${base}/?pid=HP010101`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  try {
+    const html = await fetchHtml(`${base}/?pid=HP010101`);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("td.list_subject").each((_, td) => {
+      const href = $(td).find("a").attr("href") ?? "";
+      const nttMatch = href.match(/nttId=(\d+)/);
+      const title = $(td).text().trim().replace(/\s+/g, " ");
+      const tr = $(td).closest("tr");
+      const date = parseDate(tr.find("td").last().text());
+      if (!title || title.length < 3) return;
+      const link = nttMatch
+        ? `${base}/?bbsMode=view&bbsId=BBSMSTR_000000000021&nttId=${nttMatch[1]}&pid=HP010101`
+        : `${base}/?pid=HP010101`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch {
+    return [];
+  }
 }
 
 // 충남경제진흥원
@@ -164,7 +167,10 @@ async function fetchMoel(): Promise<Notice[]> {
     $("item").each((_, el) => {
       const title = $(el).find("title").text().trim();
       const link = $(el).find("link").text().trim();
-      const dateStr = $(el).find("dc\\:date").text().trim();
+      let dateStr = "";
+      $(el).children().each((_, c) => {
+        if (($(c).prop("tagName") ?? "").toUpperCase() === "DC:DATE") dateStr = $(c).text().trim();
+      });
       const date = dateStr.slice(0, 10);
       if (!title || title.length < 3) return;
       notices.push({ title, date, link, isNew: isWithin3Days(date) });

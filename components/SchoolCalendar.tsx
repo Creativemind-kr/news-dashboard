@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // ── 공휴일 ────────────────────────────────────────────
 const HOLIDAYS: Record<string, string> = {
@@ -44,27 +44,44 @@ const SCHEDULE = [
   { classStart: "2026-12-15", classEnd: "2027-01-13", bizStart: "2026-12-16", bizEnd: "2027-01-14" },
 ];
 
-// 교육부/교내 휴가 (특별 표시)
 const SPECIAL: Record<string, string> = {
   "2026-07-09": "교육부휴가", "2026-07-10": "교육부휴가", "2026-07-11": "교육부휴가",
   "2026-07-12": "교육부휴가", "2026-07-13": "교육부휴가",
   "2026-08-13": "교내휴가",  "2026-08-14": "교내휴가",  "2026-08-16": "교내휴가",
 };
 
+// 이벤트 타입 정의
+type EventType = "classStart" | "classEnd" | "bizStart" | "bizEnd" | "holiday" | "special";
+
+interface DayEvent {
+  type: EventType;
+  label: string;
+}
+
+const EVENT_STYLE: Record<EventType, { cell: string; text: string; dot: string; listColor: string }> = {
+  classStart: { cell: "bg-green-100",  text: "text-green-800", dot: "bg-green-500",  listColor: "text-green-700" },
+  classEnd:   { cell: "bg-rose-100",   text: "text-rose-800",  dot: "bg-rose-500",   listColor: "text-rose-700"  },
+  bizStart:   { cell: "bg-blue-100",   text: "text-blue-800",  dot: "bg-blue-500",   listColor: "text-blue-700"  },
+  bizEnd:     { cell: "bg-orange-100", text: "text-orange-800",dot: "bg-orange-400", listColor: "text-orange-700"},
+  holiday:    { cell: "bg-red-50",     text: "text-red-600",   dot: "bg-red-400",    listColor: "text-red-600"   },
+  special:    { cell: "bg-purple-100", text: "text-purple-800",dot: "bg-purple-400", listColor: "text-purple-700"},
+};
+
 function toStr(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function getDots(dateStr: string) {
-  const dots: { bg: string; label: string }[] = [];
+function getEvents(dateStr: string): DayEvent[] {
+  const events: DayEvent[] = [];
   for (const s of SCHEDULE) {
-    if (dateStr === s.classStart) dots.push({ bg: "bg-green-500", label: "개강" });
-    if (dateStr === s.classEnd)   dots.push({ bg: "bg-rose-500",  label: "종강" });
-    if (dateStr === s.bizStart)   dots.push({ bg: "bg-blue-500",  label: "영업시작" });
-    if (dateStr === s.bizEnd)     dots.push({ bg: "bg-orange-400",label: "영업종료" });
+    if (dateStr === s.classStart) events.push({ type: "classStart", label: "개강" });
+    if (dateStr === s.classEnd)   events.push({ type: "classEnd",   label: "종강" });
+    if (dateStr === s.bizStart)   events.push({ type: "bizStart",   label: "영업시작" });
+    if (dateStr === s.bizEnd)     events.push({ type: "bizEnd",     label: "영업종료" });
   }
-  if (SPECIAL[dateStr]) dots.push({ bg: "bg-purple-400", label: SPECIAL[dateStr] });
-  return dots;
+  if (HOLIDAYS[dateStr]) events.push({ type: "holiday", label: HOLIDAYS[dateStr] });
+  if (SPECIAL[dateStr])  events.push({ type: "special", label: SPECIAL[dateStr] });
+  return events;
 }
 
 function buildMonth(year: number, month: number) {
@@ -78,6 +95,18 @@ function buildMonth(year: number, month: number) {
   return cells;
 }
 
+// 당월 이벤트 목록
+function getMonthEvents(year: number, month: number) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const result: { day: number; dateStr: string; events: DayEvent[] }[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = toStr(year, month, d);
+    const events = getEvents(dateStr);
+    if (events.length > 0) result.push({ day: d, dateStr, events });
+  }
+  return result;
+}
+
 interface MiniCalendarProps {
   year: number;
   month: number;
@@ -86,83 +115,81 @@ interface MiniCalendarProps {
 }
 
 function MiniCalendar({ year, month, today, shade }: MiniCalendarProps) {
+  const [tooltip, setTooltip] = useState<{ day: number; events: DayEvent[] } | null>(null);
   const cells = buildMonth(year, month);
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  const bg =
-    shade === "prev" ? "bg-gray-100" :
-    shade === "next" ? "bg-gray-200" : "bg-white";
-  const headerText =
-    shade === "prev" ? "text-gray-400" :
-    shade === "next" ? "text-gray-500" : "text-gray-800";
-  const dimText =
-    shade === "current" ? "text-gray-300" : "text-transparent";
+  const bg = shade === "prev" ? "bg-gray-100" : shade === "next" ? "bg-gray-200" : "bg-white";
+  const headerText = shade === "prev" ? "text-gray-400" : shade === "next" ? "text-gray-500" : "text-gray-800";
 
   return (
-    <div className={`${bg} rounded-lg px-2 py-2`}>
+    <div className={`${bg} rounded-lg px-2 py-2 relative`}>
       <p className={`text-center text-xs font-semibold mb-1.5 ${headerText}`}>
         {year}년 {month + 1}월
       </p>
-      {/* 요일 헤더 */}
       <div className="grid grid-cols-7 mb-0.5">
         {["일","월","화","수","목","금","토"].map((d, i) => (
-          <div
-            key={d}
-            className={`text-center text-[10px] font-medium py-0.5 ${
-              i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-gray-400"
-            }`}
-          >
-            {d}
-          </div>
+          <div key={d} className={`text-center text-[10px] font-medium py-0.5 ${
+            i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-gray-400"
+          }`}>{d}</div>
         ))}
       </div>
-      {/* 날짜 */}
+
       {weeks.map((week, wi) => (
         <div key={wi} className="grid grid-cols-7">
           {week.map((day, di) => {
             if (!day) return <div key={di} />;
             const dateStr = toStr(year, month, day);
             const isToday = dateStr === today;
-            const isHoliday = !!HOLIDAYS[dateStr];
-            const isSpecial = !!SPECIAL[dateStr];
-            const dots = getDots(dateStr);
+            const events = shade === "current" ? getEvents(dateStr) : [];
             const isSun = di === 0;
             const isSat = di === 6;
 
-            const numColor =
-              shade !== "current" ? "text-gray-400" :
-              isToday ? "text-white" :
-              isHoliday ? "text-red-500" :
-              isSun ? "text-red-400" :
-              isSat ? "text-blue-400" :
-              "text-gray-700";
+            // 셀 배경: 이벤트 중 가장 우선순위 높은 것
+            const priorityOrder: EventType[] = ["classStart","classEnd","bizStart","bizEnd","special","holiday"];
+            const topEvent = priorityOrder.find(t => events.some(e => e.type === t));
+            const cellBg = shade === "current" && topEvent && !isToday
+              ? EVENT_STYLE[topEvent].cell : "";
+
+            const numColor = shade !== "current" ? "text-gray-400"
+              : isToday ? "text-white"
+              : events.some(e => e.type === "holiday") ? "text-red-600"
+              : isSun ? "text-red-400"
+              : isSat ? "text-blue-400"
+              : "text-gray-700";
 
             return (
-              <div key={di} className="flex flex-col items-center py-0.5">
-                <div
-                  className={`w-5 h-5 flex items-center justify-center rounded-full text-[11px] leading-none font-medium ${numColor} ${
-                    isToday && shade === "current" ? "bg-blue-500" : ""
-                  } ${isSpecial && shade === "current" ? "bg-purple-100" : ""}`}
-                  title={
-                    [HOLIDAYS[dateStr], ...dots.map(d => d.label)].filter(Boolean).join(" / ")
-                  }
-                >
+              <div
+                key={di}
+                className="flex flex-col items-center py-0.5 relative"
+                onMouseEnter={() => shade === "current" && events.length > 0 && setTooltip({ day, events })}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                <div className={`w-5 h-5 flex items-center justify-center rounded-full text-[11px] leading-none font-medium cursor-default
+                  ${numColor}
+                  ${isToday && shade === "current" ? "bg-blue-500" : cellBg}
+                `}>
                   {day}
                 </div>
-                {dots.length > 0 && shade === "current" && (
-                  <div className="flex gap-0.5 mt-0.5">
-                    {dots.slice(0, 3).map((dot, i) => (
-                      <span key={i} className={`w-1 h-1 rounded-full ${dot.bg}`} title={dot.label} />
-                    ))}
-                  </div>
-                )}
-                {dots.length === 0 && <div className="h-1.5" />}
               </div>
             );
           })}
         </div>
       ))}
+
+      {/* 툴팁 */}
+      {tooltip && (
+        <div className="absolute left-full top-0 ml-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-36 text-xs">
+          <p className="font-semibold text-gray-700 mb-1">{month + 1}월 {tooltip.day}일</p>
+          {tooltip.events.map((e, i) => (
+            <div key={i} className={`flex items-center gap-1 ${EVENT_STYLE[e.type].listColor}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${EVENT_STYLE[e.type].dot}`} />
+              {e.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -172,45 +199,47 @@ export function SchoolCalendar() {
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth();
-    const todayStr = toStr(y, m, now.getDate());
-
     const prevDate = new Date(y, m - 1, 1);
     const nextDate = new Date(y, m + 1, 1);
     return {
       prev: { year: prevDate.getFullYear(), month: prevDate.getMonth() },
       curr: { year: y, month: m },
       next: { year: nextDate.getFullYear(), month: nextDate.getMonth() },
-      todayStr,
+      todayStr: toStr(y, m, now.getDate()),
     };
   }, []);
+
+  const monthEvents = useMemo(() => getMonthEvents(curr.year, curr.month), [curr]);
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs font-bold text-gray-600 text-center px-1 py-1 border-b border-gray-200">
         코리아교육그룹 학사일정
       </p>
+
       <MiniCalendar year={prev.year} month={prev.month} today={todayStr} shade="prev" />
       <MiniCalendar year={curr.year} month={curr.month} today={todayStr} shade="current" />
       <MiniCalendar year={next.year} month={next.month} today={todayStr} shade="next" />
-      {/* 범례 */}
-      <div className="grid grid-cols-2 gap-x-2 gap-y-1 px-1 pt-1 border-t border-gray-200">
-        {[
-          { bg: "bg-green-500",  label: "개강" },
-          { bg: "bg-rose-500",   label: "종강" },
-          { bg: "bg-blue-500",   label: "영업시작" },
-          { bg: "bg-orange-400", label: "영업종료" },
-          { bg: "bg-purple-400", label: "교내행사" },
-        ].map(({ bg, label }) => (
-          <div key={label} className="flex items-center gap-1">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${bg}`} />
-            <span className="text-[10px] text-gray-500">{label}</span>
+
+      {/* 당월 이벤트 목록 */}
+      {monthEvents.length > 0 && (
+        <div className="border-t border-gray-200 pt-2">
+          <p className="text-[10px] font-semibold text-gray-500 mb-1.5 px-1">
+            {curr.month + 1}월 일정
+          </p>
+          <div className="flex flex-col gap-1">
+            {monthEvents.map(({ day, events }) =>
+              events.map((e, i) => (
+                <div key={`${day}-${i}`} className="flex items-center gap-1.5 px-1">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${EVENT_STYLE[e.type].dot}`} />
+                  <span className="text-[10px] text-gray-500 w-8 shrink-0">{curr.month + 1}/{day}</span>
+                  <span className={`text-[10px] font-medium ${EVENT_STYLE[e.type].listColor}`}>{e.label}</span>
+                </div>
+              ))
+            )}
           </div>
-        ))}
-        <div className="flex items-center gap-1">
-          <span className="text-red-400 text-[10px]">●</span>
-          <span className="text-[10px] text-gray-500">공휴일</span>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -16,26 +16,22 @@ jobs:
         with:
           ref: data
 
-      - name: Fetch moel notice list and save JSON
+      - name: Fetch moel RSS and save JSON
         run: |
-          HTML=$(curl -sk --max-time 15 "https://www.moel.go.kr/news/notice/noticeList.do")
+          XML=$(curl -sk --max-time 15 "https://www.moel.go.kr/rss/notice.do")
+          echo "=== RAW RSS TITLES ==="
+          echo "$XML" | grep -oP '(?<=<!\[CDATA\[).*?(?=\]\]>)' | head -20
           JSON=$(node -e "
-            const html = \`$HTML\`;
-            const base = 'https://www.moel.go.kr';
-            const blocks = html.split('<tr').slice(1);
-            const notices = [];
-            for (const block of blocks) {
-              const aMatch = block.match(/href=['\""]([^'\"]*noticeView[^'\"]*)['\"][^>]*>([\s\S]*?)<\/a>/);
-              if (!aMatch) continue;
-              const href = aMatch[1];
-              const title = aMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-              if (!title.startsWith('[공고]')) continue;
-              const dateMatch = block.match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
-              const date = dateMatch ? dateMatch[0].replace(/\./g, '-') : '';
-              const link = href.startsWith('http') ? href : base + href;
-              notices.push({ title, link, date });
-              if (notices.length >= 5) break;
-            }
+            const xml = \`$XML\`;
+            const items = xml.split('<item>').slice(1);
+            const all = items.slice(0,20).map(block => {
+              const title = (block.match(/CDATA\[([\s\S]*?)\]\]/) || [])[1]?.trim() || '';
+              const link  = (block.match(/<link>([\s\S]*?)<\/link>/) || [])[1]?.trim() || '';
+              const date  = (block.match(/<dc:date>([\s\S]*?)<\/dc:date>/) || [])[1]?.trim().slice(0,10) || '';
+              return { title, link, date };
+            }).filter(n => n.title.length > 2);
+            process.stderr.write('All titles:\n' + all.map(n=>n.title).join('\n') + '\n');
+            const notices = all.filter(n => n.title.startsWith('[공고]')).slice(0,5);
             process.stdout.write(JSON.stringify(notices));
           ")
           echo "Fetched: $JSON"

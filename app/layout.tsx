@@ -15,6 +15,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "모닝브리프",
   description: "매일 아침 뉴스 & 공고 대시보드",
+  openGraph: {
+    title: "🤖 모닝브리프",
+    description: "매일 아침 최신 뉴스와 사업공고를 한눈에",
+    images: [{ url: "/og.png", width: 1456, height: 816 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "🤖 모닝브리프",
+    description: "매일 아침 최신 뉴스와 사업공고를 한눈에",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({

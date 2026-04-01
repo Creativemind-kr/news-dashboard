@@ -18,14 +18,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: "🤖 모닝브리프",
     description: "매일 아침 최신 뉴스와 사업공고를 한눈에",
-    images: [{ url: "/og.png", width: 1456, height: 816 }],
+    url: "https://news-dashboard-theta-lac.vercel.app",
+    images: [{ url: "https://news-dashboard-theta-lac.vercel.app/og.png", width: 1456, height: 816 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "🤖 모닝브리프",
     description: "매일 아침 최신 뉴스와 사업공고를 한눈에",
-    images: ["/og.png"],
+    images: ["https://news-dashboard-theta-lac.vercel.app/og.png"],
   },
 };
 

@@ -163,22 +163,25 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회
+// 한국세무사회 — EUC-KR 인코딩, onclick 기반 (a 태그 없음)
 async function fetchKacpta(): Promise<Notice[]> {
   const base = "https://license.kacpta.or.kr";
-  const html = await fetchHtml(`${base}/web/notice/notice.aspx`);
+  const html = await fetchHtml(`${base}/web/notice/notice.aspx`, "euc-kr");
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
-    const title = a.text().trim();
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td").last().text());
+  $("table.table_notice tr").each((i, el) => {
+    if (i === 0) return; // 헤더 행 스킵
+    const tds = $(el).find("td");
+    if (tds.length < 4) return;
+    // onclick에서 sNo 추출: frm.sNo.value='2024'
+    const onclick = $(tds[1]).attr("onclick") ?? $(tds[0]).attr("onclick") ?? "";
+    const sNoMatch = onclick.match(/sNo\.value='(\d+)'/);
+    if (!sNoMatch) return;
+    const title = $(tds[1]).text().trim().replace(/\s+/g, " ");
+    const date = parseDate($(tds[3]).text().trim());
     if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${base}/web/notice/${href}`;
+    const link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNoMatch[1]}`;
     notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
@@ -205,25 +208,35 @@ async function fetchHrdkorea(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 능력개발교육원 (한국기술교육대학교)
+// 능력개발교육원 — Polaris LMS (SPA), 메인 HTML에 임베드된 MIDDLE_BANNER_LIST 파싱
 async function fetchHrdi(): Promise<Notice[]> {
   const base = "https://hrdi.koreatech.ac.kr";
   const html = await fetchHtml(`${base}/?m1=page&menu_id=11`);
   if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("table tbody tr, .board_list tbody tr, ul.bbs_list li").each((_, el) => {
-    const a = $(el).find("a").first();
-    const title = a.text().trim();
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td, .date").last().text());
-    if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${base}/${href}`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  // HTML에 임베드된 MIDDLE_BANNER_LIST JSON 추출
+  const match = html.match(/var MIDDLE_BANNER_LIST\s*=\s*(\{[^\n]+\});/);
+  if (!match) return [];
+  try {
+    const data = JSON.parse(match[1]) as {
+      list: Array<{
+        is_available: number;
+        is_deleted: number;
+        title: string;
+        effective_start_date?: string;
+        properties?: { url?: string };
+      }>;
+    };
+    return (data.list ?? [])
+      .filter((item) => item.is_available && !item.is_deleted && item.title?.length > 2)
+      .slice(0, 5)
+      .map((item) => {
+        const date = (item.effective_start_date ?? "").slice(0, 10);
+        const link = item.properties?.url ?? base;
+        return { title: item.title, date, link, isNew: isWithin3Days(date) };
+      });
+  } catch {
+    return [];
+  }
 }
 
 // 충남경제진흥원 — 일반공지

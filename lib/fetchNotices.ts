@@ -13,6 +13,7 @@ export interface NoticeSource {
   name: string;
   url: string;
   notices: Notice[];
+  group: "public" | "chungnam";
 }
 
 function isWithin3Days(dateStr: string): boolean {
@@ -92,27 +93,6 @@ async function fetchKsqa(): Promise<Notice[]> {
   }
 }
 
-// 충남경제진흥원
-async function fetchCepa(): Promise<Notice[]> {
-  const base = "https://www.cepa.or.kr";
-  const html = await fetchHtml(`${base}/notice/notice.do?pm=6&ms=32`);
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
-    const title = a.text().trim();
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td").last().text());
-    if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${base}/board/boardDetail.do?pm=6&ms=32&${href}`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
-}
-
 // Q-net — onclick에서 artlSeq 추출
 async function fetchQnet(): Promise<Notice[]> {
   const base = "https://www.q-net.or.kr";
@@ -183,6 +163,27 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
+// 한국세무사회
+async function fetchKacpta(): Promise<Notice[]> {
+  const base = "https://license.kacpta.or.kr";
+  const html = await fetchHtml(`${base}/web/notice/notice.aspx`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td a").first();
+    const title = a.text().trim();
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/web/notice/${href}`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
 // 산업인력공단 — EUC-KR 강제 디코딩
 async function fetchHrdkorea(): Promise<Notice[]> {
   const base = "https://www.hrdkorea.or.kr";
@@ -204,23 +205,119 @@ async function fetchHrdkorea(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-const SOURCES = [
-  { id: "hira",  name: "심사평가원",    url: "https://www.ksqa.or.kr/?pid=HP010101",     fetch: fetchKsqa },
-  { id: "cepa",  name: "충남경제진흥원", url: "https://www.cepa.or.kr",     fetch: fetchCepa },
-  { id: "qnet",  name: "Q-net",         url: "https://www.q-net.or.kr",    fetch: fetchQnet },
-  { id: "cqnet", name: "CQ-net",        url: "https://c.q-net.or.kr",      fetch: fetchCqnet },
-  { id: "moel",  name: "고용노동부",    url: "https://www.moel.go.kr/news/notice/noticeList.do",     fetch: fetchMoel },
-  { id: "hrd",   name: "산업인력공단",  url: "https://www.hrdkorea.or.kr", fetch: fetchHrdkorea },
+// 능력개발교육원 (한국기술교육대학교)
+async function fetchHrdi(): Promise<Notice[]> {
+  const base = "https://hrdi.koreatech.ac.kr";
+  const html = await fetchHtml(`${base}/?m1=page&menu_id=11`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr, .board_list tbody tr, ul.bbs_list li").each((_, el) => {
+    const a = $(el).find("a").first();
+    const title = a.text().trim();
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td, .date").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/${href}`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 충남경제진흥원 — 일반공지
+async function fetchCepa(): Promise<Notice[]> {
+  const base = "https://www.cepa.or.kr";
+  const html = await fetchHtml(`${base}/notice/notice.do?pm=6&ms=32`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td a").first();
+    const title = a.text().trim();
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/board/boardDetail.do?pm=6&ms=32&${href}`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 충남경제진흥원 사업공고 공통 fetch
+async function fetchCepaBusiness(url: string, fallbackUrl: string): Promise<Notice[]> {
+  const base = "https://www.cepa.or.kr";
+  const html = await fetchHtml(url);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td a").first();
+    const title = a.text().trim();
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : fallbackUrl;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 산업구조변화대응 특화훈련사업
+async function fetchCepaSpecial(): Promise<Notice[]> {
+  const url = "https://www.cepa.or.kr/business/business.do?pm=4&ms=123";
+  return fetchCepaBusiness(url, url);
+}
+
+// 지역산업 맞춤 인력양성사업
+async function fetchCepaRegional(): Promise<Notice[]> {
+  const url = "https://www.cepa.or.kr/business/business.do?pm=4&ms=123";
+  return fetchCepaBusiness(url, url);
+}
+
+// ── 소스 정의 ──────────────────────────────────────────────────────────────────
+
+const PUBLIC_SOURCES = [
+  { id: "hira",   name: "심사평가원",     url: "https://www.ksqa.or.kr/?pid=HP010101",                       fetch: fetchKsqa },
+  { id: "moel",   name: "고용노동부",     url: "https://www.moel.go.kr/news/notice/noticeList.do",           fetch: fetchMoel },
+  { id: "qnet",   name: "Q-net",          url: "https://www.q-net.or.kr",                                    fetch: fetchQnet },
+  { id: "cqnet",  name: "CQ-net",         url: "https://c.q-net.or.kr",                                      fetch: fetchCqnet },
+  { id: "kacpta", name: "한국세무사회",   url: "https://license.kacpta.or.kr/web/notice/notice.aspx",        fetch: fetchKacpta },
+  { id: "hrd",    name: "산업인력공단",   url: "https://www.hrdkorea.or.kr",                                 fetch: fetchHrdkorea },
+  { id: "hrdi",   name: "능력개발교육원", url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",           fetch: fetchHrdi },
+];
+
+const CHUNGNAM_SOURCES = [
+  { id: "cepa",          name: "충남경제진흥원",             url: "https://www.cepa.or.kr/notice/notice.do?pm=6&ms=32",      fetch: fetchCepa },
+  { id: "cepa-special",  name: "산업구조변화대응 특화훈련", url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123", fetch: fetchCepaSpecial },
+  { id: "cepa-regional", name: "지역산업 맞춤 인력양성",    url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123", fetch: fetchCepaRegional },
 ];
 
 export async function getAllNotices(): Promise<NoticeSource[]> {
-  const results = await Promise.all(
-    SOURCES.map(async (s) => ({
-      id: s.id,
-      name: s.name,
-      url: s.url,
-      notices: await s.fetch(),
-    }))
-  );
-  return results;
+  const [publicResults, chungnamResults] = await Promise.all([
+    Promise.all(
+      PUBLIC_SOURCES.map(async (s) => ({
+        id: s.id,
+        name: s.name,
+        url: s.url,
+        group: "public" as const,
+        notices: await s.fetch(),
+      }))
+    ),
+    Promise.all(
+      CHUNGNAM_SOURCES.map(async (s) => ({
+        id: s.id,
+        name: s.name,
+        url: s.url,
+        group: "chungnam" as const,
+        notices: await s.fetch(),
+      }))
+    ),
+  ]);
+  return [...publicResults, ...chungnamResults];
 }

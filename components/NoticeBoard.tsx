@@ -1,12 +1,16 @@
 import type { NoticeSource } from "@/lib/fetchNotices";
 
 const SOURCE_COLORS: Record<string, string> = {
-  hira:  "border-blue-400 bg-blue-50 text-blue-700",
-  cepa:  "border-emerald-400 bg-emerald-50 text-emerald-700",
-  qnet:  "border-orange-400 bg-orange-50 text-orange-700",
-  cqnet: "border-purple-400 bg-purple-50 text-purple-700",
-  moel:  "border-red-400 bg-red-50 text-red-700",
-  hrd:   "border-teal-400 bg-teal-50 text-teal-700",
+  hira:          "border-blue-400 bg-blue-50 text-blue-700",
+  moel:          "border-red-400 bg-red-50 text-red-700",
+  qnet:          "border-orange-400 bg-orange-50 text-orange-700",
+  cqnet:         "border-purple-400 bg-purple-50 text-purple-700",
+  kacpta:        "border-yellow-400 bg-yellow-50 text-yellow-700",
+  hrd:           "border-teal-400 bg-teal-50 text-teal-700",
+  hrdi:          "border-indigo-400 bg-indigo-50 text-indigo-700",
+  cepa:          "border-emerald-400 bg-emerald-50 text-emerald-700",
+  "cepa-special":  "border-green-500 bg-green-50 text-green-700",
+  "cepa-regional": "border-lime-500 bg-lime-50 text-lime-700",
 };
 
 function NoticeCard({ source }: { source: NoticeSource }) {
@@ -77,23 +81,48 @@ function NoticeCard({ source }: { source: NoticeSource }) {
   );
 }
 
+function SectionHeader({ title, sources }: { title: string; sources: NoticeSource[] }) {
+  const newCount = sources.reduce((acc, s) => acc + s.notices.filter((n) => n.isNew).length, 0);
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">{title}</h2>
+      {newCount > 0 && (
+        <span className="text-xs bg-red-500 text-white px-2.5 py-1 rounded-full font-semibold">
+          신규 {newCount}건
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function NoticeBoard({ sources }: { sources: NoticeSource[] }) {
-  const totalNew = sources.reduce((acc, s) => acc + s.notices.filter((n) => n.isNew).length, 0);
+  const publicSources = sources.filter((s) => s.group === "public");
+  const chungnamSources = sources.filter((s) => s.group === "chungnam");
 
   return (
-    <div>
-      <div className="flex items-center gap-3 mb-4">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">사업공고 모니터</h2>
-        {totalNew > 0 && (
-          <span className="text-xs bg-red-500 text-white px-2.5 py-1 rounded-full font-semibold">
-            신규 {totalNew}건
-          </span>
-        )}
+    <div className="space-y-10">
+      {/* 공용 사업공고 모니터 */}
+      <div>
+        <SectionHeader title="공용 사업공고 모니터" sources={publicSources} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {publicSources.map((source) => (
+            <NoticeCard key={source.id} source={source} />
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {sources.map((source) => (
-          <NoticeCard key={source.id} source={source} />
-        ))}
+
+      {/* 충남지역 공고 모니터 */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-px flex-1 bg-gray-200" />
+          <SectionHeader title="충남지역 공고 모니터" sources={chungnamSources} />
+          <div className="h-px flex-1 bg-gray-200" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {chungnamSources.map((source) => (
+            <NoticeCard key={source.id} source={source} />
+          ))}
+        </div>
       </div>
     </div>
   );

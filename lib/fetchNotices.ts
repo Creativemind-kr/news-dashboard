@@ -293,6 +293,27 @@ async function fetchCepaRegional(): Promise<Notice[]> {
   return fetchCepaBusiness(url, url);
 }
 
+// 정보통신산업진흥원 (NIPA)
+async function fetchNipa(): Promise<Notice[]> {
+  const base = "https://www.nipa.kr";
+  const html = await fetchHtml(`${base}/home/2-2?tab=1`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table.tbgg tbody tr").each((_, el) => {
+    const a = $(el).find("td.tl a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().find("span.bco").text().trim());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/home/2-2`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
 // ── 소스 정의 ──────────────────────────────────────────────────────────────────
 
 const PUBLIC_SOURCES = [
@@ -302,7 +323,8 @@ const PUBLIC_SOURCES = [
   { id: "cqnet",  name: "CQ-net",         url: "https://c.q-net.or.kr",                                      fetch: fetchCqnet },
   { id: "kacpta", name: "한국세무사회",   url: "https://license.kacpta.or.kr/web/notice/notice.aspx",        fetch: fetchKacpta },
   { id: "hrd",    name: "산업인력공단",   url: "https://www.hrdkorea.or.kr",                                 fetch: fetchHrdkorea },
-  { id: "hrdi",   name: "능력개발교육원", url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",           fetch: fetchHrdi },
+  { id: "hrdi",   name: "능력개발교육원",   url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",         fetch: fetchHrdi },
+  { id: "nipa",   name: "정보통신산업진흥원", url: "https://www.nipa.kr/home/2-2?tab=1",                    fetch: fetchNipa },
 ];
 
 const CHUNGNAM_SOURCES = [

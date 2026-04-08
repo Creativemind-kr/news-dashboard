@@ -11,6 +11,7 @@ const SOURCE_COLORS: Record<string, string> = {
   cepa:          "border-emerald-400 bg-emerald-50 text-emerald-700",
   "cepa-special":  "border-green-500 bg-green-50 text-green-700",
   "cepa-regional": "border-lime-500 bg-lime-50 text-lime-700",
+  nipa:            "border-cyan-400 bg-cyan-50 text-cyan-700",
 };
 
 function NoticeCard({ source }: { source: NoticeSource }) {

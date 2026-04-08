@@ -163,10 +163,13 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회 — EUC-KR 인코딩, onclick 기반 (a 태그 없음)
+// 한국세무사회 — EUC-KR 인코딩, onclick 기반 (a 태그 없음), Cloudflare Worker 경유
 async function fetchKacpta(): Promise<Notice[]> {
   const base = "https://license.kacpta.or.kr";
-  const html = await fetchHtml(`${base}/web/notice/notice.aspx`, "euc-kr");
+  // 프록시가 EUC-KR → UTF-8 변환 후 반환
+  const html = await fetchHtml(
+    `${PROXY}?url=${encodeURIComponent(`${base}/web/notice/notice.aspx`)}`
+  );
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];

@@ -1,0 +1,83 @@
+name: Fetch Kacpta Notices
+
+on:
+  schedule:
+    - cron: '30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout data branch
+        uses: actions/checkout@v4
+        with:
+          ref: data
+
+      - name: Fetch kacpta notices and save JSON
+        run: |
+          curl -sk --max-time 15 \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36" \
+            -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+            -H "Accept-Language: ko-KR,ko;q=0.9" \
+            "https://license.kacpta.or.kr/web/notice/notice.aspx" | \
+            iconv -f euc-kr -t utf-8 -c > /tmp/kacpta.html
+
+          node << 'JSEOF'
+          const fs = require('fs');
+          const html = fs.readFileSync('/tmp/kacpta.html', 'utf8');
+          const notices = [];
+
+          const tableMatch = html.match(/<table[^>]*class="table_notice"[^>]*>([\s\S]*?)<\/table>/);
+          if (!tableMatch) {
+            console.log('table_notice not found');
+            fs.writeFileSync('kacpta-notices.json', '[]');
+            process.exit(0);
+          }
+
+          const rows = tableMatch[1].split(/<tr[^>]*>/).slice(2); // 헤더 행 스킵
+
+          for (const row of rows) {
+            const sNoMatch = row.match(/sNo\.value='(\d+)'/);
+            if (!sNoMatch) continue;
+            const sNo = sNoMatch[1];
+
+            // td 순서: 번호, 제목, 첨부, 날짜, 조회수
+            const tdBlocks = row.match(/<td[\s\S]*?<\/td>/g) || [];
+            let title = '';
+            for (const td of tdBlocks) {
+              const text = td.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+              if (text.length > 5 && !/^\d{1,4}$/.test(text) && !/^\d{4}\.\d{2}\.\d{2}$/.test(text) && !/^[\d,]+$/.test(text)) {
+                title = text;
+                break;
+              }
+            }
+            if (!title) continue;
+
+            const dateMatch = row.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+            const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : '';
+
+            notices.push({
+              title,
+              date,
+              link: `https://license.kacpta.or.kr/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNo}`
+            });
+            if (notices.length >= 5) break;
+          }
+
+          console.log(`Fetched ${notices.length} notices`);
+          notices.forEach(n => console.log(' -', n.title));
+          fs.writeFileSync('kacpta-notices.json', JSON.stringify(notices));
+          JSEOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kacpta-notices.json
+          git diff --cached --quiet || git commit -m "update kacpta notices $(date -u '+%Y-%m-%d %H:%M')"
+          git push origin data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

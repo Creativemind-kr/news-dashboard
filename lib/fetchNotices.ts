@@ -163,28 +163,24 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회 — EUC-KR 인코딩, onclick 기반 (a 태그 없음), 직접 EUC-KR 디코딩
+// 한국세무사회 — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
 async function fetchKacpta(): Promise<Notice[]> {
-  const base = "https://license.kacpta.or.kr";
-  const html = await fetchHtml(`${base}/web/notice/notice.aspx`, "euc-kr");
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("table.table_notice tr").each((i, el) => {
-    if (i === 0) return; // 헤더 행 스킵
-    const tds = $(el).find("td");
-    if (tds.length < 4) return;
-    // onclick에서 sNo 추출: frm.sNo.value='2024'
-    const onclick = $(tds[1]).attr("onclick") ?? $(tds[0]).attr("onclick") ?? "";
-    const sNoMatch = onclick.match(/sNo\.value='(\d+)'/);
-    if (!sNoMatch) return;
-    const title = $(tds[1]).text().trim().replace(/\s+/g, " ");
-    const date = parseDate($(tds[3]).text().trim());
-    if (!title || title.length < 3) return;
-    const link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNoMatch[1]}`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kacpta-notices.json",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title,
+      date: item.date,
+      link: item.link,
+      isNew: isWithin3Days(item.date),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // 산업인력공단 — EUC-KR 강제 디코딩

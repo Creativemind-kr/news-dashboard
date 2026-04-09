@@ -163,21 +163,33 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회 — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+// 한국세무사회 — Cloudflare Worker 프록시 경유 (GitHub Actions IP 차단 우회)
 async function fetchKacpta(): Promise<Notice[]> {
+  const base = "https://license.kacpta.or.kr";
+  const targetUrl = `${base}/web/notice/notice.aspx`;
   try {
-    const res = await fetch(
-      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kacpta-notices.json",
-      { cache: "no-store" }
-    );
-    if (!res.ok) return [];
-    const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.slice(0, 5).map((item) => ({
-      title: item.title,
-      date: item.date,
-      link: item.link,
-      isNew: isWithin3Days(item.date),
-    }));
+    const html = await fetchHtml(`${PROXY}?url=${encodeURIComponent(targetUrl)}`, "euc-kr");
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table.table_notice tbody tr").each((_, el) => {
+      const onclickText = $(el).find("td[onclick]").first().attr("onclick") ?? "";
+      const sNoMatch = onclickText.match(/sNo\.value='(\d+)'/);
+      if (!sNoMatch) return;
+      const sNo = sNoMatch[1];
+
+      // 두 번째 onclick td가 제목 td
+      // cheerio .text()는 <2025 개정세법> 같은 꺽쇠 텍스트를 태그로 오인하므로
+      // 실제 HTML 태그(알파벳 시작)만 제거하는 방식 사용
+      const titleTd = $(el).find("td[onclick]").eq(1);
+      const rawHtml = titleTd.html() ?? "";
+      const title = rawHtml.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/\s+/g, " ").trim();
+      const date = parseDate($(el).find("td").last().text());
+      if (!title || title.length < 3) return;
+      const link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNo}`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
   } catch {
     return [];
   }

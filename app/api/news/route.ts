@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+export const preferredRegion = "icn1"; // 서울 리전 — 한국 사이트(kacpta 등) 직접 접근
 import { getDailyNews, getWeeklyTop, getMonthlyTop, getHotTopics2026, getCompetitorNews } from "@/lib/fetchNews";
 import { getAllNotices } from "@/lib/fetchNotices";
 

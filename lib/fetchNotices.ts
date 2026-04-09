@@ -163,12 +163,11 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회 — Cloudflare Worker 프록시 경유 (GitHub Actions IP 차단 우회)
+// 한국세무사회 — 직접 크롤링 (Vercel 서울 리전에서 실행, icn1)
 async function fetchKacpta(): Promise<Notice[]> {
   const base = "https://license.kacpta.or.kr";
-  const targetUrl = `${base}/web/notice/notice.aspx`;
   try {
-    const html = await fetchHtml(`${PROXY}?url=${encodeURIComponent(targetUrl)}`, "euc-kr");
+    const html = await fetchHtml(`${base}/web/notice/notice.aspx`, "euc-kr");
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];

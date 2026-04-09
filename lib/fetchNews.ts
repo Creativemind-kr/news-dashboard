@@ -130,10 +130,35 @@ async function fetchCategory(cat: typeof CATEGORIES[0], sort: "sim" | "date", ex
   return { ...cat, summary, news };
 }
 
+function getYesterdayRange(): { start: Date; end: Date } {
+  // KST(UTC+9) 기준 어제 00:00 ~ 23:59:59
+  const now = new Date();
+  const kstOffset = 9 * 60 * 60 * 1000;
+  const todayKST = new Date(Math.floor((now.getTime() + kstOffset) / 86400000) * 86400000 - kstOffset);
+  const yesterdayStart = new Date(todayKST.getTime() - 86400000);
+  const yesterdayEnd = new Date(todayKST.getTime() - 1);
+  return { start: yesterdayStart, end: yesterdayEnd };
+}
+
+function isYesterday(dateStr: string): boolean {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const { start, end } = getYesterdayRange();
+    return d >= start && d <= end;
+  } catch {
+    return false;
+  }
+}
+
 export async function getDailyNews(): Promise<Category[]> {
   const results: Category[] = [];
   for (const cat of CATEGORIES) {
-    results.push(await fetchCategory(cat, "date"));
+    const category = await fetchCategory(cat, "date");
+    results.push({
+      ...category,
+      news: category.news.filter((item) => isYesterday(item.date)),
+    });
     await delay(200);
   }
   return results;

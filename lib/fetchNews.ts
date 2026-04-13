@@ -244,12 +244,12 @@ async function fetchGoogleRss(query: string, maxItems = 5): Promise<NewsItem[]> 
 }
 
 export async function getGoogleNews(): Promise<Category[]> {
-  const results: Category[] = [];
-  for (const cat of CATEGORIES) {
-    const news = await fetchGoogleRss(cat.query, 5);
+  const settled = await Promise.allSettled(
+    CATEGORIES.map((cat) => fetchGoogleRss(cat.query, 5))
+  );
+  return CATEGORIES.map((cat, i) => {
+    const news = settled[i].status === "fulfilled" ? settled[i].value : [];
     const summary = news.slice(0, 3).map((n) => n.title).join(" · ") || "뉴스를 불러올 수 없습니다.";
-    results.push({ ...cat, summary, news });
-    await delay(300);
-  }
-  return results;
+    return { ...cat, summary, news };
+  });
 }

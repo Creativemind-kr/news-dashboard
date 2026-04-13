@@ -63,7 +63,7 @@ export function TabNav({ daily, notices }: Props) {
     prefetchedRef.current = true;
     const prefetch = async () => {
       await new Promise((r) => setTimeout(r, 2000));
-      for (const tab of ["daily", "weekly", "monthly", "hot", "competitor"]) {
+      for (const tab of ["daily", "google", "weekly", "monthly", "hot", "competitor"]) {
         await fetch(`/api/news?type=${tab}`)
           .then((r) => r.json())
           .then((data) => setCache((prev) => ({ ...prev, [tab]: data })))

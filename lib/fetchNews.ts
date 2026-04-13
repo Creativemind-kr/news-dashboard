@@ -1,3 +1,5 @@
+import Parser from "rss-parser";
+
 const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID ?? "";
 const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET ?? "";
 
@@ -220,6 +222,34 @@ export async function getHotTopics2026(): Promise<HotTopic[]> {
     const final = filtered.length > 0 ? filtered : items.slice(0, 3);
     final.forEach((item) => results.push({ ...item, tag }));
     await delay(200);
+  }
+  return results;
+}
+
+async function fetchGoogleRss(query: string, maxItems = 5): Promise<NewsItem[]> {
+  const parser = new Parser({ timeout: 8000 });
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`;
+  try {
+    const feed = await parser.parseURL(url);
+    return (feed.items ?? []).slice(0, maxItems).map((item) => ({
+      title: item.title ?? "",
+      summary: item.contentSnippet?.slice(0, 120) ?? item.content?.replace(/<[^>]+>/g, "").slice(0, 120) ?? "",
+      source: item.creator ?? (item.link ? new URL(item.link).hostname.replace("www.", "") : "구글뉴스"),
+      link: item.link ?? "",
+      date: item.pubDate ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getGoogleNews(): Promise<Category[]> {
+  const results: Category[] = [];
+  for (const cat of CATEGORIES) {
+    const news = await fetchGoogleRss(cat.query, 5);
+    const summary = news.slice(0, 3).map((n) => n.title).join(" · ") || "뉴스를 불러올 수 없습니다.";
+    results.push({ ...cat, summary, news });
+    await delay(300);
   }
   return results;
 }

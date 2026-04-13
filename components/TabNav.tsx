@@ -18,6 +18,7 @@ import type { NoticeSource } from "@/lib/fetchNotices";
 const TABS = [
   { id: "notice",     label: "📌 사업공고" },
   { id: "daily",      label: "📅 전일 뉴스" },
+  { id: "google",     label: "🌐 구글 뉴스" },
   { id: "weekly",     label: "📊 주차별 Top" },
   { id: "monthly",    label: "🗓 월차별 Top" },
   { id: "hot",        label: "🔥 2026 핫토픽" },
@@ -32,6 +33,7 @@ interface Props {
 type CacheData = {
   notice?: NoticeSource[];
   daily?: Category[];
+  google?: Category[];
   weekly?: Category[];
   monthly?: Category[];
   hot?: HotTopic[];
@@ -97,6 +99,8 @@ export function TabNav({ daily, notices }: Props) {
       return <NoticeBoard sources={cache.notice} />;
     if (active === "daily" && cache.daily)
       return <CategoryGrid categories={cache.daily} showSummary />;
+    if (active === "google" && cache.google)
+      return <CategoryGrid categories={cache.google} label="구글 뉴스 (Google News RSS)" showSummary />;
     if (active === "weekly" && cache.weekly)
       return <CategoryGrid categories={cache.weekly} label="이번 주 관련도 높은 뉴스" />;
     if (active === "monthly" && cache.monthly)

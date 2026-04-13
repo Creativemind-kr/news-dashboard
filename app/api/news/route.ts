@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const preferredRegion = "icn1"; // 서울 리전 — 한국 사이트(kacpta 등) 직접 접근
-import { getDailyNews, getWeeklyTop, getMonthlyTop, getHotTopics2026, getCompetitorNews } from "@/lib/fetchNews";
+import { getDailyNews, getWeeklyTop, getMonthlyTop, getHotTopics2026, getCompetitorNews, getGoogleNews } from "@/lib/fetchNews";
 import { getAllNotices } from "@/lib/fetchNotices";
 
 export async function GET(req: Request) {
@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   else if (type === "hot") data = await getHotTopics2026();
   else if (type === "competitor") data = await getCompetitorNews();
   else if (type === "notice") data = await getAllNotices();
+  else if (type === "google") data = await getGoogleNews();
   else data = await getDailyNews();
 
   return NextResponse.json(data, {

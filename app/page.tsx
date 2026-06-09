@@ -3,6 +3,7 @@ import { getAllNotices } from "@/lib/fetchNotices";
 import { TabNav } from "@/components/TabNav";
 
 export const revalidate = 1800;
+export const preferredRegion = "icn1";
 
 export default async function Home() {
   const [daily, notices] = await Promise.all([

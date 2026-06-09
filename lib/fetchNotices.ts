@@ -48,7 +48,7 @@ const HEADERS = {
 async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(url, {
       headers: HEADERS,
       next: { revalidate: 1800 },
@@ -355,32 +355,52 @@ async function fetchChYouth(): Promise<Notice[]> {
   return fetchGnuboard("https://www.ch2030youth.kr", "notice");
 }
 
-// 천안시청 — PCMS
+// 천안시청 — button onclick 기반 (a 태그 없음)
 async function fetchCheonanCity(): Promise<Notice[]> {
   const base = "https://www.cheonan.go.kr";
+  const listUrl = `${base}/bbs/BBSMSTR_000000000028/list.do`;
   try {
-    const html = await fetchHtml(`${base}/bbs/BBSMSTR_000000000028/list.do`);
+    const html = await fetchHtml(listUrl);
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
     $("table tbody tr").each((_, el) => {
-      const a = $(el).find("td a").first();
-      const title = a.text().trim().replace(/\s+/g, " ");
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).find("td").last().text());
+      const titleTd = $(el).find("td.board__table--title");
+      const title = titleTd.find(".board__subject-text").text().trim().replace(/\s+/g, " ");
+      const onclick = titleTd.find("button").attr("onclick") ?? "";
+      const idMatch = onclick.match(/fn_search_detail\('([^']+)'\)/);
+      const date = parseDate($(el).find("td.board__table--date").text().trim());
       if (!title || title.length < 3) return;
-      const link = href.startsWith("http") ? href
-        : href.startsWith("/") ? `${base}${href}`
-        : `${base}/bbs/BBSMSTR_000000000028/list.do`;
+      const id = idMatch ? idMatch[1] : "";
+      const link = id
+        ? `${base}/bbs/BBSMSTR_000000000028/view.do?nttId=${id}`
+        : listUrl;
       notices.push({ title, date, link, isNew: isWithin3Days(date) });
     });
     return notices.slice(0, 5);
   } catch { return []; }
 }
 
-// 천안시영상미디어센터 — 그누보드
+// 천안시영상미디어센터 — 그누보드 (테마 다름: td.subject / td.td_date)
 async function fetchCheonanMedia(): Promise<Notice[]> {
-  return fetchGnuboard("https://www.xn--2z1br4k89deoa28djvfzvassq98bdzk.kr", "notice");
+  const base = "https://www.xn--2z1br4k89deoa28djvfzvassq98bdzk.kr";
+  const html = await fetchHtml(`${base}/bbs/board.php?bo_table=notice`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("tbody tr").each((_, el) => {
+    const a = $(el).find("td.subject a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const rawDate = $(el).find("td.td_date").text().trim();
+    const date = parseGnuDate(rawDate);
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/bbs/${href}`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
 }
 
 // 충청남도 공식 최근소식
@@ -392,11 +412,16 @@ async function fetchChungnamOfficial(): Promise<Notice[]> {
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
   $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
+    const a = $(el).find("td.td-subj a").first();
     const title = a.text().trim().replace(/\s+/g, " ");
     const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td").last().text());
     if (!title || title.length < 3) return;
+    // 날짜: YYYY-MM-DD 패턴이 있는 첫 번째 td
+    let date = "";
+    $(el).find("td").each((_, td) => {
+      const txt = $(td).text().trim();
+      if (!date && /^\d{4}-\d{2}-\d{2}$/.test(txt)) date = txt;
+    });
     const link = href.startsWith("http") ? href
       : href.startsWith("/") ? `${base}${href}`
       : url;
@@ -405,25 +430,33 @@ async function fetchChungnamOfficial(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 충청남도 공모전 — EUC-KR
+// 충청남도 공모전 — UTF-8, {(pssrpDspyNm,...)(beginDe,...)} 임베디드 형식 파싱
 async function fetchChungnamContest(): Promise<Notice[]> {
   const base = "https://www.chungnam.go.kr";
-  const listBase = `${base}/contest/competition/codeManage`;
-  const html = await fetchHtml(`${listBase}/listUser.do?menuNo=2600003`, "euc-kr");
+  const url = `${base}/contest/competition/codeManage/listUser.do?menuNo=2600003`;
+  const html = await fetchHtml(url);
   if (!html) return [];
-  const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("tbody tr").each((_, el) => {
-    const a = $(el).find("td.tit a, td a").first();
-    const title = a.text().trim().replace(/\s+/g, " ");
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td.tit ul li:first-child span, td").last().text());
-    if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : href ? `${listBase}/${href}` : `${base}/contest.do`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
+  const blocks = html.match(/\{[^}]{30,}\}/g) ?? [];
+  const seen = new Set<string>();
+  for (const block of blocks) {
+    const get = (key: string) => {
+      const m = block.match(new RegExp(`\\(${key},([^)]+)\\)`));
+      return m ? m[1].trim() : "";
+    };
+    const name = get("pssrpDspyNm");
+    const rawDate = get("beginDe");
+    const id = get("pssrpDspyCd");
+    if (!name || name.length < 3 || seen.has(name)) continue;
+    seen.add(name);
+    const date = rawDate.length >= 8
+      ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+      : "";
+    const link = id
+      ? `${base}/contest/competition/codeManage/detailUser.do?pssrpDspyCd=${id}&menuNo=2600003`
+      : url;
+    notices.push({ title: name, date, link, isNew: isWithin3Days(date) });
+  }
   return notices.slice(0, 5);
 }
 
@@ -447,9 +480,26 @@ async function fetchCheonanFamily(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 충남콘텐츠진흥원 — 그누보드 사업공고
+// 충남콘텐츠진흥원 — 카드형 게시판 (www.ccon.kr)
 async function fetchCcon(): Promise<Notice[]> {
-  return fetchGnuboard("https://ccon.kr", "bsnt");
+  const base = "https://www.ccon.kr";
+  const html = await fetchHtml(`${base}/bbs/board.php?bo_table=bsnt`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $(".board_list li").each((_, el) => {
+    const a = $(el).find("a.bo_subject").first();
+    const title = a.clone().find(".new_icon, i.fa").remove().end().text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const rawDate = $(el).find(".bo_date").text().replace(/[^\d-]/g, "").trim();
+    const date = parseDate(rawDate);
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : base;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
 }
 
 // 국비훈련 (work24.go.kr)

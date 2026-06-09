@@ -31,6 +31,14 @@ function parseDate(text: string): string {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
 }
 
+function parseGnuDate(raw: string): string {
+  const full = raw.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+  if (full) return `${full[1]}-${full[2]}-${full[3]}`;
+  const short = raw.trim().match(/^(\d{2})[.\-\/](\d{2})$/);
+  if (short) return `${new Date().getFullYear()}-${short[1]}-${short[2]}`;
+  return "";
+}
+
 const HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -321,23 +329,274 @@ async function fetchNipa(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
+// ── 그누보드 공통 헬퍼 ────────────────────────────────────────────────────────
+async function fetchGnuboard(base: string, boTable: string): Promise<Notice[]> {
+  const html = await fetchHtml(`${base}/bbs/board.php?bo_table=${boTable}`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("tbody tr").each((_, el) => {
+    const a = $(el).find("td.td_subject a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const rawDate = $(el).find("td.td_datetime").text().trim();
+    const date = parseGnuDate(rawDate);
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/bbs/${href}`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 천안청년센터이음 — 그누보드
+async function fetchChYouth(): Promise<Notice[]> {
+  return fetchGnuboard("https://www.ch2030youth.kr", "notice");
+}
+
+// 천안시청 — PCMS
+async function fetchCheonanCity(): Promise<Notice[]> {
+  const base = "https://www.cheonan.go.kr";
+  try {
+    const html = await fetchHtml(`${base}/bbs/BBSMSTR_000000000028/list.do`);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table tbody tr").each((_, el) => {
+      const a = $(el).find("td a").first();
+      const title = a.text().trim().replace(/\s+/g, " ");
+      const href = a.attr("href") ?? "";
+      const date = parseDate($(el).find("td").last().text());
+      if (!title || title.length < 3) return;
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : `${base}/bbs/BBSMSTR_000000000028/list.do`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
+}
+
+// 천안시영상미디어센터 — 그누보드
+async function fetchCheonanMedia(): Promise<Notice[]> {
+  return fetchGnuboard("https://www.xn--2z1br4k89deoa28djvfzvassq98bdzk.kr", "notice");
+}
+
+// 충청남도 공식 최근소식
+async function fetchChungnamOfficial(): Promise<Notice[]> {
+  const base = "https://www.chungnam.go.kr";
+  const url = `${base}/cnportal/bbs/B0000488/list.do?menuNo=5100288`;
+  const html = await fetchHtml(url);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : url;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 충청남도 공모전 — EUC-KR
+async function fetchChungnamContest(): Promise<Notice[]> {
+  const base = "https://www.chungnam.go.kr";
+  const listBase = `${base}/contest/competition/codeManage`;
+  const html = await fetchHtml(`${listBase}/listUser.do?menuNo=2600003`, "euc-kr");
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("tbody tr").each((_, el) => {
+    const a = $(el).find("td.tit a, td a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td.tit ul li:first-child span, td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : href ? `${listBase}/${href}` : `${base}/contest.do`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 천안시다문화가족지원센터
+async function fetchCheonanFamily(): Promise<Notice[]> {
+  const base = "https://chungnamcheonansi.familynet.or.kr";
+  const boardBase = `${base}/center/lay1/bbs/S295T311C312/A/6`;
+  const html = await fetchHtml(`${boardBase}/list.do`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("tbody tr").each((_, el) => {
+    const a = $(el).find("td.tit a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = $(el).find("td.tit ul li:first-child span").text().trim();
+    if (!title || title.length < 3) return;
+    const link = href ? `${boardBase}/${href}` : `${boardBase}/list.do`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 충남콘텐츠진흥원 — 그누보드 사업공고
+async function fetchCcon(): Promise<Notice[]> {
+  return fetchGnuboard("https://ccon.kr", "bsnt");
+}
+
+// 국비훈련 (work24.go.kr)
+async function fetchWork24(): Promise<Notice[]> {
+  const base = "https://www.work24.go.kr";
+  const html = await fetchHtml(`${base}/cm/c/f/1100/selecPolicyList.do?concTrgtSecd=EBQ04`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr, ul.list_wrap li, .policy_list li").each((_, el) => {
+    const a = $(el).find("a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/cm/main.do`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 온통청년 (youthcenter.go.kr) — 프록시 경유
+async function fetchYouthCenter(): Promise<Notice[]> {
+  const base = "https://www.youthcenter.go.kr";
+  try {
+    const html = await fetchHtml(
+      `${PROXY}?url=${encodeURIComponent(`${base}/youngtalkInfo/noticeList.do`)}`
+    );
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table tbody tr").each((_, el) => {
+      const a = $(el).find("td a").first();
+      const title = a.text().trim().replace(/\s+/g, " ");
+      const href = a.attr("href") ?? "";
+      const date = parseDate($(el).find("td").last().text());
+      if (!title || title.length < 3) return;
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : `${base}/youngtalkInfo/noticeList.do`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
+}
+
+// K-START UP — EUC-KR 사업공고 목록
+async function fetchKStartup(): Promise<Notice[]> {
+  const base = "https://www.k-startup.go.kr";
+  const url = `${base}/web/contents/bizpbanc-ongoing.do?menuNo=141002`;
+  const html = await fetchHtml(url, "euc-kr");
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td").last().text());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : url;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 한국과학창의재단 (kosac.re.kr) — Next.js, 프록시 경유
+async function fetchKosac(): Promise<Notice[]> {
+  const base = "https://www.kosac.re.kr";
+  try {
+    const html = await fetchHtml(
+      `${PROXY}?url=${encodeURIComponent(`${base}/menus/206/boards/357/posts`)}`
+    );
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table tbody tr, ul.board_list li, .board_item").each((_, el) => {
+      const a = $(el).find("a").first();
+      const title = a.text().trim().replace(/\s+/g, " ");
+      const href = a.attr("href") ?? "";
+      const date = parseDate($(el).text());
+      if (!title || title.length < 3) return;
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : `${base}/menus/206/boards/357/posts`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
+}
+
+// 과제관리시스템 (pmsnew.kosac.re.kr) — 프록시 경유
+async function fetchKosacPms(): Promise<Notice[]> {
+  const base = "https://pmsnew.kosac.re.kr";
+  try {
+    const html = await fetchHtml(`${PROXY}?url=${encodeURIComponent(`${base}/index.do`)}`);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table tbody tr").each((_, el) => {
+      const a = $(el).find("td a").first();
+      const title = a.text().trim().replace(/\s+/g, " ");
+      const href = a.attr("href") ?? "";
+      const date = parseDate($(el).find("td").last().text());
+      if (!title || title.length < 3) return;
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : base;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
+}
+
 // ── 소스 정의 ──────────────────────────────────────────────────────────────────
 
 const PUBLIC_SOURCES = [
-  { id: "hira",   name: "심사평가원",     url: "https://www.ksqa.or.kr/?pid=HP010101",                       fetch: fetchKsqa },
-  { id: "moel",   name: "고용노동부",     url: "https://www.moel.go.kr/news/notice/noticeList.do",           fetch: fetchMoel },
-  { id: "qnet",   name: "Q-net",          url: "https://www.q-net.or.kr",                                    fetch: fetchQnet },
-  { id: "cqnet",  name: "CQ-net",         url: "https://c.q-net.or.kr",                                      fetch: fetchCqnet },
-  { id: "kacpta", name: "한국세무사회",   url: "https://license.kacpta.or.kr/web/notice/notice.aspx",        fetch: fetchKacpta },
-  { id: "hrd",    name: "산업인력공단",   url: "https://www.hrdkorea.or.kr",                                 fetch: fetchHrdkorea },
-  { id: "hrdi",   name: "능력개발교육원",   url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",         fetch: fetchHrdi },
-  { id: "nipa",   name: "정보통신산업진흥원", url: "https://www.nipa.kr/home/2-2?tab=1",                    fetch: fetchNipa },
+  { id: "hira",       name: "심사평가원",         url: "https://www.ksqa.or.kr/?pid=HP010101",                       fetch: fetchKsqa },
+  { id: "moel",       name: "고용노동부",         url: "https://www.moel.go.kr/news/notice/noticeList.do",           fetch: fetchMoel },
+  { id: "qnet",       name: "Q-net",              url: "https://www.q-net.or.kr",                                    fetch: fetchQnet },
+  { id: "cqnet",      name: "CQ-net",             url: "https://c.q-net.or.kr",                                      fetch: fetchCqnet },
+  { id: "kacpta",     name: "한국세무사회",       url: "https://license.kacpta.or.kr/web/notice/notice.aspx",        fetch: fetchKacpta },
+  { id: "hrd",        name: "산업인력공단",       url: "https://www.hrdkorea.or.kr",                                 fetch: fetchHrdkorea },
+  { id: "hrdi",       name: "능력개발교육원",     url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",           fetch: fetchHrdi },
+  { id: "nipa",       name: "정보통신산업진흥원", url: "https://www.nipa.kr/home/2-2?tab=1",                        fetch: fetchNipa },
+  { id: "work24",     name: "국비훈련(고용24)",   url: "https://www.work24.go.kr/cm/main.do",                        fetch: fetchWork24 },
+  { id: "youth-center", name: "온통청년",         url: "https://www.youthcenter.go.kr/main",                         fetch: fetchYouthCenter },
+  { id: "kstartup",   name: "K-START UP",         url: "https://www.k-startup.go.kr/web/main/index.do",              fetch: fetchKStartup },
+  { id: "kosac",      name: "한국과학창의재단",   url: "https://www.kosac.re.kr/main",                               fetch: fetchKosac },
+  { id: "kosac-pms",  name: "KOSAC 과제관리",     url: "https://pmsnew.kosac.re.kr/index.do",                        fetch: fetchKosacPms },
 ];
 
 const CHUNGNAM_SOURCES = [
-  { id: "cepa",          name: "충남경제진흥원",             url: "https://www.cepa.or.kr/notice/notice.do?pm=6&ms=32",      fetch: fetchCepa },
-  { id: "cepa-special",  name: "산업구조변화대응 특화훈련", url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123", fetch: fetchCepaSpecial },
-  { id: "cepa-regional", name: "지역산업 맞춤 인력양성",    url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123", fetch: fetchCepaRegional },
+  { id: "cepa",          name: "충남경제진흥원",             url: "https://www.cepa.or.kr/notice/notice.do?pm=6&ms=32",                                              fetch: fetchCepa },
+  { id: "cepa-special",  name: "산업구조변화대응 특화훈련", url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123",                                         fetch: fetchCepaSpecial },
+  { id: "cepa-regional", name: "지역산업 맞춤 인력양성",    url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123",                                         fetch: fetchCepaRegional },
+  { id: "ch-youth",      name: "천안청년센터이음",           url: "https://www.ch2030youth.kr/bbs/board.php?bo_table=notice",                                        fetch: fetchChYouth },
+  { id: "cheonan-city",  name: "천안시청",                  url: "https://www.cheonan.go.kr/kor.do",                                                                fetch: fetchCheonanCity },
+  { id: "cheonan-media", name: "천안시영상미디어센터",      url: "https://www.xn--2z1br4k89deoa28djvfzvassq98bdzk.kr/bbs/board.php?bo_table=notice",                fetch: fetchCheonanMedia },
+  { id: "chungnam",      name: "충청남도 공식",              url: "https://www.chungnam.go.kr/main.do",                                                              fetch: fetchChungnamOfficial },
+  { id: "chungnam-contest", name: "충청남도 공모전",         url: "https://www.chungnam.go.kr/contest.do",                                                           fetch: fetchChungnamContest },
+  { id: "cheonan-family",   name: "천안다문화가족지원센터",  url: "https://chungnamcheonansi.familynet.or.kr/center/",                                               fetch: fetchCheonanFamily },
+  { id: "ccon",             name: "충남콘텐츠진흥원",        url: "https://ccon.kr/bbs/board.php?bo_table=bsnt",                                                     fetch: fetchCcon },
 ];
 
 export async function getAllNotices(): Promise<NoticeSource[]> {

@@ -39,37 +39,52 @@ jobs:
           }
 
           async function extractNotices(page, base, boardUrl, siteKey) {
-            // 콘텐츠 로드 대기 (사이트별)
-            const waitSelMap = {
-              work24:      'table tbody tr, .list_wrap li',
-              kstartup:    'table tbody tr a',
-              youthcenter: 'table tbody tr',
-              kosac:       'table tbody tr',
-              'kosac-pms': 'table tbody tr',
-            };
-            try {
-              await page.waitForSelector(waitSelMap[siteKey] || 'table tbody tr', { timeout: 10000 });
-            } catch {}
+            // 진단: 로드된 HTML 일부 출력
+            const snippet = await page.evaluate(() => document.body?.innerHTML?.slice(0, 800) || '');
+            console.log(`[${siteKey}] HTML snippet: ${snippet.replace(/\s+/g,' ').slice(0,400)}`);
+
+            // kosac: 게시판 포스트 링크 대기 (네비게이션과 구별)
+            if (siteKey === 'kosac') {
+              try { await page.waitForSelector('a[href*="/posts/"]', { timeout: 12000 }); } catch {}
+            } else {
+              try { await page.waitForSelector('table tbody tr', { timeout: 10000 }); } catch {}
+            }
             await page.waitForTimeout(1500);
 
             return page.evaluate((base, boardUrl, siteKey) => {
               function cleanTitle(raw) {
                 return raw
-                  .replace(/새로운게시글|N새글|NEW|new/g, '')
+                  .replace(/새로운게시글|N새글/g, '')
+                  .replace(/\[?NEW\]?/gi, '')
                   .replace(/\d{4}[.\-\/]\d{2}[.\-\/]\d{2}/, '')
                   .replace(/\s+/g, ' ')
                   .trim();
               }
-
-              // a.href는 브라우저가 자동으로 절대 URL 반환
               function getLink(a) {
                 const href = a.href || '';
-                return (href && !href.startsWith('javascript')) ? href : boardUrl;
+                return (href && !href.startsWith('javascript') && href !== base) ? href : boardUrl;
               }
 
               const results = [];
 
-              // 메인 콘텐츠 영역 우선 (네비게이션 제외)
+              // ── kosac 전용: 게시판 포스트 링크 직접 탐색 ──────────────
+              if (siteKey === 'kosac') {
+                const postLinks = Array.from(document.querySelectorAll('a[href*="/posts/"]'))
+                  .filter(a => /\/posts\/\d+/.test(a.href));
+                for (const a of postLinks) {
+                  const title = cleanTitle(a.textContent);
+                  if (title.length < 3) continue;
+                  const row = a.closest('tr, li, article, div');
+                  const rowText = row ? row.textContent : '';
+                  const m = rowText.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+                  const date = m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+                  results.push({ title, date, link: a.href });
+                  if (results.length >= 5) break;
+                }
+                return results;
+              }
+
+              // ── 공통: 메인 콘텐츠 영역 우선 ─────────────────────────
               const root = document.querySelector(
                 'main, #content, #main, .content-wrap, .board-wrap, [id*=content]'
               ) || document.body;
@@ -89,15 +104,13 @@ jobs:
                   const m = tds[i].textContent.trim().match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
                   if (m) { date = `${m[1]}-${m[2]}-${m[3]}`; break; }
                 }
-                // kosac: 날짜 없는 항목은 네비게이션 — 제외
-                if (siteKey === 'kosac' && !date) continue;
                 results.push({ title, date, link });
                 if (results.length >= 5) break;
               }
 
               if (results.length > 0) return results;
 
-              // 리스트 방식 fallback
+              // 리스트 fallback
               const listSels = [
                 '.board_list li', '.board-list li', '.notice-list li',
                 '[class*=board] li', '[class*=notice] li',

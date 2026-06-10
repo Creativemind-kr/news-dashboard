@@ -1,0 +1,167 @@
+name: Fetch Dynamic Sites (Playwright)
+
+on:
+  schedule:
+    - cron: '45 * * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout data branch
+        uses: actions/checkout@v4
+        with:
+          ref: data
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Write scraper script
+        run: |
+          cat > /tmp/scraper.js << 'SCRIPT_EOF'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+
+          async function extractNotices(page, base) {
+            return page.evaluate((base) => {
+              function toAbs(href) {
+                if (!href) return base;
+                if (href.startsWith('http')) return href;
+                if (href.startsWith('/')) return base.replace(/\/$/, '') + href;
+                return base;
+              }
+              const results = [];
+
+              // 테이블 방식
+              const rows = Array.from(document.querySelectorAll('table tbody tr'));
+              for (const row of rows) {
+                const a = row.querySelector('td a');
+                if (!a) continue;
+                const title = a.textContent.trim().replace(/\s+/g, ' ');
+                if (title.length < 3) continue;
+                const link = toAbs(a.getAttribute('href'));
+                const tds = Array.from(row.querySelectorAll('td'));
+                let date = '';
+                for (let i = tds.length - 1; i >= 0; i--) {
+                  const m = tds[i].textContent.trim().match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+                  if (m) { date = `${m[1]}-${m[2]}-${m[3]}`; break; }
+                }
+                results.push({ title, date, link });
+                if (results.length >= 5) break;
+              }
+
+              if (results.length > 0) return results;
+
+              // 리스트 방식 fallback
+              const listSels = [
+                '.board_list li', '.board-list li', '.notice-list li',
+                '[class*=board] li', '[class*=notice] li', 'ul.list > li',
+                '.list-group li', '.post-list li'
+              ];
+              for (const sel of listSels) {
+                const items = Array.from(document.querySelectorAll(sel));
+                for (const item of items) {
+                  const a = item.querySelector('a');
+                  if (!a) continue;
+                  const title = a.textContent.trim().replace(/\s+/g, ' ');
+                  if (title.length < 3) continue;
+                  const link = toAbs(a.getAttribute('href'));
+                  const m = item.textContent.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+                  const date = m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+                  results.push({ title, date, link });
+                  if (results.length >= 5) break;
+                }
+                if (results.length > 0) break;
+              }
+
+              return results;
+            }, base);
+          }
+
+          const sites = [
+            { key: 'work24',      url: 'https://www.work24.go.kr/cm/c/f/1100/selecPolicyList.do?concTrgtSecd=EBQ04', base: 'https://www.work24.go.kr' },
+            { key: 'kstartup',    url: 'https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?menuNo=141002',  base: 'https://www.k-startup.go.kr' },
+            { key: 'youthcenter', url: 'https://www.youthcenter.go.kr/youngtalkInfo/noticeList.do',                    base: 'https://www.youthcenter.go.kr' },
+            { key: 'kosac',       url: 'https://www.kosac.re.kr/menus/206/boards/357/posts',                           base: 'https://www.kosac.re.kr' },
+            { key: 'kosac-pms',   url: 'https://pmsnew.kosac.re.kr/index.do',                                         base: 'https://pmsnew.kosac.re.kr' },
+          ];
+
+          (async () => {
+            const browser = await chromium.launch({
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+
+            for (const site of sites) {
+              const page = await browser.newPage();
+              try {
+                await page.setExtraHTTPHeaders({
+                  'Accept-Language': 'ko-KR,ko;q=0.9',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                });
+                console.log(`[${site.key}] fetching...`);
+
+                // networkidle 실패 시 domcontentloaded로 fallback
+                try {
+                  await page.goto(site.url, { waitUntil: 'networkidle', timeout: 25000 });
+                } catch (e) {
+                  await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                }
+                await page.waitForTimeout(3000);
+
+                const notices = await extractNotices(page, site.base);
+                console.log(`[${site.key}] ${notices.length} notices`);
+                notices.forEach(n => console.log(`  - ${n.title} (${n.date})`));
+                fs.writeFileSync(`${site.key}-notices.json`, JSON.stringify(notices));
+              } catch (e) {
+                console.error(`[${site.key}] error: ${e.message}`);
+                if (!fs.existsSync(`${site.key}-notices.json`)) {
+                  fs.writeFileSync(`${site.key}-notices.json`, '[]');
+                }
+              } finally {
+                await page.close();
+              }
+            }
+
+            await browser.close();
+          })();
+          SCRIPT_EOF
+
+      - name: Install Playwright
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: |
+          echo '{}' > package.json
+          npm install playwright --no-audit --silent
+          npx playwright install chromium --with-deps
+          echo 'node_modules' >> .git/info/exclude
+          echo 'package.json' >> .git/info/exclude
+          echo 'package-lock.json' >> .git/info/exclude
+
+      - name: Install Playwright (system deps only, cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: |
+          echo '{}' > package.json
+          npm install playwright --no-audit --silent
+          npx playwright install-deps chromium
+          echo 'node_modules' >> .git/info/exclude
+          echo 'package.json' >> .git/info/exclude
+          echo 'package-lock.json' >> .git/info/exclude
+
+      - name: Run scraper
+        run: NODE_PATH="$(pwd)/node_modules" node /tmp/scraper.js
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add work24-notices.json kstartup-notices.json youthcenter-notices.json kosac-notices.json kosac-pms-notices.json
+          git diff --cached --quiet || git commit -m "update dynamic site notices $(date -u '+%Y-%m-%d %H:%M')"
+          git push origin data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -502,119 +502,78 @@ async function fetchCcon(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 국비훈련 (work24.go.kr)
+// 국비훈련 (work24.go.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
 async function fetchWork24(): Promise<Notice[]> {
-  const base = "https://www.work24.go.kr";
-  const html = await fetchHtml(`${base}/cm/c/f/1100/selecPolicyList.do?concTrgtSecd=EBQ04`);
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("table tbody tr, ul.list_wrap li, .policy_list li").each((_, el) => {
-    const a = $(el).find("a").first();
-    const title = a.text().trim().replace(/\s+/g, " ");
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).text());
-    if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${base}/cm/main.do`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/work24-notices.json",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+    }));
+  } catch { return []; }
 }
 
-// 온통청년 (youthcenter.go.kr) — 프록시 경유
+// 온통청년 (youthcenter.go.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
 async function fetchYouthCenter(): Promise<Notice[]> {
-  const base = "https://www.youthcenter.go.kr";
   try {
-    const html = await fetchHtml(
-      `${PROXY}?url=${encodeURIComponent(`${base}/youngtalkInfo/noticeList.do`)}`
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/youthcenter-notices.json",
+      { cache: "no-store" }
     );
-    if (!html) return [];
-    const $ = cheerio.load(html);
-    const notices: Notice[] = [];
-    $("table tbody tr").each((_, el) => {
-      const a = $(el).find("td a").first();
-      const title = a.text().trim().replace(/\s+/g, " ");
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).find("td").last().text());
-      if (!title || title.length < 3) return;
-      const link = href.startsWith("http") ? href
-        : href.startsWith("/") ? `${base}${href}`
-        : `${base}/youngtalkInfo/noticeList.do`;
-      notices.push({ title, date, link, isNew: isWithin3Days(date) });
-    });
-    return notices.slice(0, 5);
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+    }));
   } catch { return []; }
 }
 
-// K-START UP — EUC-KR 사업공고 목록
+// K-START UP — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
 async function fetchKStartup(): Promise<Notice[]> {
-  const base = "https://www.k-startup.go.kr";
-  const url = `${base}/web/contents/bizpbanc-ongoing.do?menuNo=141002`;
-  const html = await fetchHtml(url, "euc-kr");
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  $("table tbody tr").each((_, el) => {
-    const a = $(el).find("td a").first();
-    const title = a.text().trim().replace(/\s+/g, " ");
-    const href = a.attr("href") ?? "";
-    const date = parseDate($(el).find("td").last().text());
-    if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : url;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
-}
-
-// 한국과학창의재단 (kosac.re.kr) — Next.js, 프록시 경유
-async function fetchKosac(): Promise<Notice[]> {
-  const base = "https://www.kosac.re.kr";
   try {
-    const html = await fetchHtml(
-      `${PROXY}?url=${encodeURIComponent(`${base}/menus/206/boards/357/posts`)}`
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kstartup-notices.json",
+      { cache: "no-store" }
     );
-    if (!html) return [];
-    const $ = cheerio.load(html);
-    const notices: Notice[] = [];
-    $("table tbody tr, ul.board_list li, .board_item").each((_, el) => {
-      const a = $(el).find("a").first();
-      const title = a.text().trim().replace(/\s+/g, " ");
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).text());
-      if (!title || title.length < 3) return;
-      const link = href.startsWith("http") ? href
-        : href.startsWith("/") ? `${base}${href}`
-        : `${base}/menus/206/boards/357/posts`;
-      notices.push({ title, date, link, isNew: isWithin3Days(date) });
-    });
-    return notices.slice(0, 5);
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+    }));
   } catch { return []; }
 }
 
-// 과제관리시스템 (pmsnew.kosac.re.kr) — 프록시 경유
-async function fetchKosacPms(): Promise<Notice[]> {
-  const base = "https://pmsnew.kosac.re.kr";
+// 한국과학창의재단 (kosac.re.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+async function fetchKosac(): Promise<Notice[]> {
   try {
-    const html = await fetchHtml(`${PROXY}?url=${encodeURIComponent(`${base}/index.do`)}`);
-    if (!html) return [];
-    const $ = cheerio.load(html);
-    const notices: Notice[] = [];
-    $("table tbody tr").each((_, el) => {
-      const a = $(el).find("td a").first();
-      const title = a.text().trim().replace(/\s+/g, " ");
-      const href = a.attr("href") ?? "";
-      const date = parseDate($(el).find("td").last().text());
-      if (!title || title.length < 3) return;
-      const link = href.startsWith("http") ? href
-        : href.startsWith("/") ? `${base}${href}`
-        : base;
-      notices.push({ title, date, link, isNew: isWithin3Days(date) });
-    });
-    return notices.slice(0, 5);
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kosac-notices.json",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+    }));
+  } catch { return []; }
+}
+
+// 과제관리시스템 (pmsnew.kosac.re.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+async function fetchKosacPms(): Promise<Notice[]> {
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kosac-pms-notices.json",
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const items: { title: string; link: string; date: string }[] = await res.json();
+    return items.slice(0, 5).map((item) => ({
+      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+    }));
   } catch { return []; }
 }
 

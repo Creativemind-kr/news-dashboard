@@ -48,7 +48,7 @@ const HEADERS = {
 async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, {
       headers: HEADERS,
       next: { revalidate: 1800 },

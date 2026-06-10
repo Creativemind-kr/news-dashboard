@@ -1,37 +1,37 @@
 export default function Loading() {
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">🤖 모닝브리프</h1>
-            <div className="h-3 w-32 bg-gray-200 rounded mt-1 animate-pulse" />
-          </div>
-        </div>
-      </header>
+    <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-orange-100 gap-8">
 
-      {/* 탭 스켈레톤 */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-2 py-2">
-            {[80, 60, 72, 56].map((w, i) => (
-              <div key={i} className={`h-8 rounded-full bg-gray-200 animate-pulse`} style={{ width: w }} />
-            ))}
-          </div>
+      {/* 훌라후프 씬 */}
+      <div className="relative w-32 h-32 flex items-center justify-center">
+        <span className="text-5xl z-10 select-none">🕺</span>
+        {/* 바깥 후프 */}
+        <div
+          className="absolute inset-0 rounded-full border-[6px] border-orange-400 animate-spin"
+          style={{ animationDuration: '0.75s', borderTopColor: 'transparent' }}
+        />
+        {/* 안쪽 후프 (역방향) */}
+        <div
+          className="absolute inset-2 rounded-full border-[4px] border-yellow-300 animate-spin"
+          style={{ animationDuration: '0.75s', animationDirection: 'reverse', borderBottomColor: 'transparent' }}
+        />
+      </div>
+
+      {/* 메시지 */}
+      <div className="text-center">
+        <p className="text-2xl font-bold text-amber-900 tracking-wide">아침을 여는 중 ☀️</p>
+        <p className="text-sm text-amber-500 mt-1">오늘의 소식을 모아오고 있어요</p>
+        <div className="flex justify-center gap-1 mt-4">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="w-2 h-2 bg-orange-400 rounded-full animate-bounce"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
         </div>
       </div>
 
-      {/* 카드 그리드 스켈레톤 */}
-      <div className="max-w-7xl mx-auto px-4 py-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 9 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
-            <div className="h-4 w-3/4 bg-gray-200 rounded animate-pulse" />
-            <div className="h-3 w-full bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-5/6 bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-1/3 bg-gray-100 rounded animate-pulse mt-2" />
-          </div>
-        ))}
-      </div>
     </main>
   );
 }

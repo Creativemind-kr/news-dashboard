@@ -43,7 +43,16 @@ function NoticeCard({ source }: { source: NoticeSource }) {
       {/* 공지 목록 */}
       <ul className="divide-y divide-gray-50 pb-2">
         {source.notices.length === 0 ? (
-          <li className="px-5 py-4 text-sm text-gray-400">공지를 불러올 수 없습니다.</li>
+          <li className="px-5 py-4">
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-500 hover:text-blue-700 hover:underline"
+            >
+              사이트에서 직접 확인하기 ↗
+            </a>
+          </li>
         ) : (
           source.notices.map((notice, i) => (
             <li key={i} className="hover:bg-gray-50 transition-colors">

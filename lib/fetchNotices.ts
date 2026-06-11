@@ -453,7 +453,7 @@ async function fetchChungnamContest(): Promise<Notice[]> {
       ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
       : "";
     const link = id
-      ? `${base}/contest/competition/codeManage/detailUser.do?pssrpDspyCd=${id}&menuNo=2600003`
+      ? `${base}/contest/competition/codeManage/view.do?menuNo=2600003&pssrpDspyCd=${id}`
       : url;
     notices.push({ title: name, date, link, isNew: isWithin3Days(date) });
   }
@@ -562,18 +562,32 @@ async function fetchKosac(): Promise<Notice[]> {
   } catch { return []; }
 }
 
-// 과제관리시스템 (pmsnew.kosac.re.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+// KOSAC 과제관리 (pmsnew.kosac.re.kr) — 사업공고 접수중 목록 직접 파싱 (서버사이드 렌더링)
 async function fetchKosacPms(): Promise<Notice[]> {
+  const base = "https://pmsnew.kosac.re.kr";
+  const listUrl = `${base}/bizPbanc/rcpt/rcptPbancList.do`;
   try {
-    const res = await fetch(
-      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kosac-pms-notices.json",
-      { cache: "no-store" }
-    );
-    if (!res.ok) return [];
-    const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.slice(0, 5).map((item) => ({
-      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
-    }));
+    const html = await fetchHtml(listUrl);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $(".sub_con_box").each((_, el) => {
+      const title = $(el).find(".e_c_tit h2").text().trim().replace(/\s+/g, " ");
+      if (!title || title.length < 3) return;
+      let date = "";
+      $(el).find(".e_c_detail li").each((_, li) => {
+        if ($(li).find("strong").text().trim() === "등록일") {
+          date = $(li).find("p").text().trim();
+        }
+      });
+      const onclick = $(el).find(".e_c_btn a").attr("onclick") ?? "";
+      const m = onclick.match(/fn_viewDetail\('([^']+)'/);
+      const link = m
+        ? `${base}/bizPbanc/rcpt/rcptPbancDetail.do?pbancId=${m[1]}`
+        : listUrl;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
   } catch { return []; }
 }
 
@@ -592,7 +606,7 @@ const PUBLIC_SOURCES = [
   { id: "youth-center", name: "온통청년",         url: "https://www.youthcenter.go.kr/main",                         fetch: fetchYouthCenter },
   { id: "kstartup",   name: "K-START UP",         url: "https://www.k-startup.go.kr/web/main/index.do",              fetch: fetchKStartup },
   { id: "kosac",      name: "한국과학창의재단",   url: "https://www.kosac.re.kr/main",                               fetch: fetchKosac },
-  { id: "kosac-pms",  name: "KOSAC 과제관리",     url: "https://pmsnew.kosac.re.kr/index.do",                        fetch: fetchKosacPms },
+  { id: "kosac-pms",  name: "KOSAC 과제관리",     url: "https://pmsnew.kosac.re.kr/bizPbanc/rcpt/rcptPbancList.do",  fetch: fetchKosacPms },
 ];
 
 const CHUNGNAM_SOURCES = [

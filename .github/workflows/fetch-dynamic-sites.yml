@@ -29,27 +29,44 @@ jobs:
           const { chromium } = require('playwright');
           const fs = require('fs');
 
-          // 제목 정리: 배지 텍스트·날짜 제거
           function cleanTitle(raw) {
             return raw
-              .replace(/새로운게시글|N새글|NEW|new/g, '')
+              .replace(/새로운게시글|N새글/g, '')
+              .replace(/\[?NEW\]?/gi, '')
               .replace(/\d{4}[.\-\/]\d{2}[.\-\/]\d{2}/, '')
               .replace(/\s+/g, ' ')
               .trim();
           }
 
           async function extractNotices(page, base, boardUrl, siteKey) {
-            // 진단: 로드된 HTML 일부 출력
-            const snippet = await page.evaluate(() => document.body?.innerHTML?.slice(0, 800) || '');
-            console.log(`[${siteKey}] HTML snippet: ${snippet.replace(/\s+/g,' ').slice(0,400)}`);
+            const snippet = await page.evaluate(() => document.body?.innerHTML?.slice(0, 600) || '');
+            console.log(`[${siteKey}] snippet: ${snippet.replace(/\s+/g,' ').slice(0,300)}`);
 
-            // kosac: 게시판 포스트 링크 대기 (네비게이션과 구별)
-            if (siteKey === 'kosac') {
-              try { await page.waitForSelector('a[href*="/posts/"]', { timeout: 12000 }); } catch {}
+            if (siteKey === 'work24') {
+              // 정책 목록은 AJAX로 #po_policyList에 렌더링됨
+              try {
+                await page.waitForSelector('#po_policyList li, li.txt_list', { timeout: 15000 });
+              } catch (e) {
+                console.log(`[work24] selector timeout: ${e.message}`);
+              }
+              await page.waitForTimeout(2000);
+            } else if (siteKey === 'kosac') {
+              // Next.js CSR — 게시판 포스트 링크 생길 때까지 대기
+              try {
+                await page.waitForFunction(
+                  () => Array.from(document.querySelectorAll('a')).some(
+                    a => /\/boards\/\d+\/posts\/\d+/.test(a.href)
+                  ),
+                  { timeout: 25000 }
+                );
+              } catch (e) {
+                console.log(`[kosac] waitForFunction timeout: ${e.message}`);
+                await page.waitForTimeout(3000);
+              }
             } else {
-              try { await page.waitForSelector('table tbody tr', { timeout: 10000 }); } catch {}
+              try { await page.waitForSelector('table tbody tr', { timeout: 12000 }); } catch {}
+              await page.waitForTimeout(1500);
             }
-            await page.waitForTimeout(1500);
 
             return page.evaluate((base, boardUrl, siteKey) => {
               function cleanTitle(raw) {
@@ -67,29 +84,48 @@ jobs:
 
               const results = [];
 
-              // ── kosac 전용: 게시판 포스트 링크 직접 탐색 ──────────────
+              // ── work24: #po_policyList li 에서 onclick 추출 ──────────────
+              if (siteKey === 'work24') {
+                const candidates = Array.from(document.querySelectorAll(
+                  '#po_policyList li a, li.txt_list a, [onclick*="fn_goPolicyIntro"]'
+                ));
+                for (const el of candidates) {
+                  const a = (el.tagName === 'A') ? el : el.querySelector('a');
+                  const title = cleanTitle((a || el).textContent);
+                  if (title.length < 3) continue;
+                  const onclick = (a || el).getAttribute('onclick') || el.getAttribute('onclick') || '';
+                  const m = onclick.match(/fn_goPolicyIntro\('([^']+)',\s*'([^']+)'\)/);
+                  const link = m
+                    ? `https://www.work24.go.kr/cm/c/f/1100/selecPolicyInfo.do?systClId=${m[1]}&systId=${m[2]}`
+                    : boardUrl;
+                  results.push({ title, date: '', link });
+                  if (results.length >= 5) break;
+                }
+                return results;
+              }
+
+              // ── kosac: 게시판 포스트 링크만 수집 ────────────────────────
               if (siteKey === 'kosac') {
-                const postLinks = Array.from(document.querySelectorAll('a[href*="/posts/"]'))
-                  .filter(a => /\/posts\/\d+/.test(a.href));
+                const postLinks = Array.from(document.querySelectorAll('a'))
+                  .filter(a => /\/boards\/\d+\/posts\/\d+/.test(a.href));
                 for (const a of postLinks) {
                   const title = cleanTitle(a.textContent);
                   if (title.length < 3) continue;
                   const row = a.closest('tr, li, article, div');
                   const rowText = row ? row.textContent : '';
-                  const m = rowText.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
-                  const date = m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+                  const dateM = rowText.match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+                  const date = dateM ? `${dateM[1]}-${dateM[2]}-${dateM[3]}` : '';
                   results.push({ title, date, link: a.href });
                   if (results.length >= 5) break;
                 }
                 return results;
               }
 
-              // ── 공통: 메인 콘텐츠 영역 우선 ─────────────────────────
+              // ── 공통 (kstartup, youthcenter) ──────────────────────────
               const root = document.querySelector(
                 'main, #content, #main, .content-wrap, .board-wrap, [id*=content]'
               ) || document.body;
 
-              // 테이블 방식
               const rows = Array.from(root.querySelectorAll('table tbody tr'));
               for (const row of rows) {
                 if (row.querySelectorAll('td').length < 2) continue;
@@ -107,10 +143,8 @@ jobs:
                 results.push({ title, date, link });
                 if (results.length >= 5) break;
               }
-
               if (results.length > 0) return results;
 
-              // 리스트 fallback
               const listSels = [
                 '.board_list li', '.board-list li', '.notice-list li',
                 '[class*=board] li', '[class*=notice] li',
@@ -131,7 +165,6 @@ jobs:
                 }
                 if (results.length > 0) break;
               }
-
               return results;
             }, base, boardUrl, siteKey);
           }
@@ -141,7 +174,6 @@ jobs:
             { key: 'kstartup',    url: 'https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?menuNo=141002',  base: 'https://www.k-startup.go.kr' },
             { key: 'youthcenter', url: 'https://www.youthcenter.go.kr/youngtalkInfo/noticeList.do',                    base: 'https://www.youthcenter.go.kr' },
             { key: 'kosac',       url: 'https://www.kosac.re.kr/menus/206/boards/357/posts',                           base: 'https://www.kosac.re.kr' },
-            { key: 'kosac-pms',   url: 'https://pmsnew.kosac.re.kr/index.do',                                         base: 'https://pmsnew.kosac.re.kr' },
           ];
 
           (async () => {
@@ -158,10 +190,13 @@ jobs:
                 });
                 console.log(`[${site.key}] fetching ${site.url}`);
 
+                // youthcenter는 느린 사이트 — 타임아웃 2배
+                const timeout1 = site.key === 'youthcenter' ? 60000 : 30000;
+                const timeout2 = site.key === 'youthcenter' ? 45000 : 20000;
                 try {
-                  await page.goto(site.url, { waitUntil: 'networkidle', timeout: 30000 });
+                  await page.goto(site.url, { waitUntil: 'networkidle', timeout: timeout1 });
                 } catch {
-                  await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                  await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: timeout2 });
                 }
 
                 const notices = await extractNotices(page, site.base, site.url, site.key);
@@ -170,7 +205,6 @@ jobs:
 
                 const outFile = `${site.key}-notices.json`;
                 const existing = fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')) : [];
-                // 새 결과가 비어있으면 기존 데이터 유지
                 if (notices.length > 0 || existing.length === 0) {
                   fs.writeFileSync(outFile, JSON.stringify(notices));
                 } else {
@@ -217,7 +251,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add work24-notices.json kstartup-notices.json youthcenter-notices.json kosac-notices.json kosac-pms-notices.json
+          git add work24-notices.json kstartup-notices.json youthcenter-notices.json kosac-notices.json
           git diff --cached --quiet || git commit -m "update dynamic site notices $(date -u '+%Y-%m-%d %H:%M')"
           git push origin data
         env:

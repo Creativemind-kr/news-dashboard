@@ -106,8 +106,12 @@ function SectionHeader({ title, sources }: { title: string; sources: NoticeSourc
 }
 
 export function NoticeBoard({ sources }: { sources: NoticeSource[] }) {
-  const publicSources = sources.filter((s) => s.group === "public");
-  const chungnamSources = sources.filter((s) => s.group === "chungnam");
+  const publicSources = sources
+    .filter((s) => s.group === "public")
+    .sort((a, b) => (a.notices.length === 0 ? 1 : 0) - (b.notices.length === 0 ? 1 : 0));
+  const chungnamSources = sources
+    .filter((s) => s.group === "chungnam")
+    .sort((a, b) => (a.notices.length === 0 ? 1 : 0) - (b.notices.length === 0 ? 1 : 0));
 
   return (
     <div className="space-y-10">

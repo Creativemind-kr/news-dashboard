@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout data branch
         uses: actions/checkout@v4
@@ -18,7 +20,7 @@ jobs:
 
       - name: Fetch kacpta notices and save JSON
         run: |
-          curl -sk --max-time 15 \
+          curl -sk --max-time 30 --retry 3 --retry-delay 5 \
             -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36" \
             -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
             -H "Accept-Language: ko-KR,ko;q=0.9" \

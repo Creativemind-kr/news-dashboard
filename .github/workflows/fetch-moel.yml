@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout data branch
         uses: actions/checkout@v4
@@ -18,7 +20,7 @@ jobs:
 
       - name: Fetch moel RSS and save JSON
         run: |
-          XML=$(curl -sk --max-time 15 "https://www.moel.go.kr/rss/notice.do")
+          XML=$(curl -sk --max-time 30 --retry 3 --retry-delay 5 "https://www.moel.go.kr/rss/notice.do")
           echo "=== RAW RSS TITLES ==="
           echo "$XML" | grep -oP '(?<=<!\[CDATA\[).*?(?=\]\]>)' | head -20
           JSON=$(node -e "

@@ -202,8 +202,8 @@ async function fetchKacpta(): Promise<Notice[]> {
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
-    // 사이트에 <tbody> 없이 <table><tr> 구조 사용
-    $("table.table_notice tr").each((_, el) => {
+    // Cheerio가 tbody 자동 삽입 — class 조건 완화, 둘 다 시도
+    $("table.table_notice tr, table.table_notice tbody tr").each((_, el) => {
       const onclickText = $(el).find("td[onclick]").first().attr("onclick") ?? "";
       const sNoMatch = onclickText.match(/sNo\.value='(\d+)'/);
       if (!sNoMatch) return;
@@ -536,14 +536,15 @@ async function fetchKorchamhrd(): Promise<Notice[]> {
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  // 제목은 td.title[onclick]에, <a> 태그 없이 td onclick으로 네비게이션
-  $("table tr").each((_, el) => {
-    if ($(el).find("th").length > 0) return;
-    const titleTd = $(el).find("td.title").first();
+  // 제목은 3번째 td(index=2), 날짜는 5번째 td(index=4), onclick에서 key 추출
+  $("table tr, table tbody tr").each((_, el) => {
+    const tds = $(el).find("td");
+    if (tds.length < 5) return; // 헤더행(th) 또는 불완전한 행 제외
+    const titleTd = tds.eq(2);
     const title = titleTd.text().trim().replace(/\s+/g, " ");
-    const onclick = titleTd.attr("onclick") ?? "";
+    const onclick = titleTd.attr("onclick") ?? $(el).find("[onclick*='funcGoDetail']").first().attr("onclick") ?? "";
     const keyMatch = onclick.match(/funcGoDetail\([^,]*,\s*'(\d+)'/);
-    const date = parseDate($(el).find("td.notice_date").text().trim());
+    const date = parseDate(tds.eq(4).text().trim());
     if (!title || title.length < 3) return;
     const link = keyMatch
       ? `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`

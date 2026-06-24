@@ -652,11 +652,11 @@ const PUBLIC_SOURCES = [
 ];
 
 const CHUNGNAM_SOURCES = [
+  { id: "cheonan-city",  name: "천안시청",                  url: "https://www.cheonan.go.kr/kor.do",                                                                fetch: fetchCheonanCity },
   { id: "cepa",          name: "충남경제진흥원",             url: "https://www.cepa.or.kr/notice/notice.do?pm=6&ms=32",                                              fetch: fetchCepa },
   { id: "cepa-special",  name: "산업구조변화대응 특화훈련", url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123",                                         fetch: fetchCepaSpecial },
   { id: "cepa-regional", name: "지역산업 맞춤 인력양성",    url: "https://www.cepa.or.kr/business/business.do?pm=4&ms=123",                                         fetch: fetchCepaRegional },
   { id: "ch-youth",      name: "천안청년센터이음",           url: "https://www.ch2030youth.kr/bbs/board.php?bo_table=notice",                                        fetch: fetchChYouth },
-  { id: "cheonan-city",  name: "천안시청",                  url: "https://www.cheonan.go.kr/kor.do",                                                                fetch: fetchCheonanCity },
   { id: "cheonan-media", name: "천안시영상미디어센터",      url: "https://www.xn--2z1br4k89deoa28djvfzvassq98bdzk.kr/bbs/board.php?bo_table=notice",                fetch: fetchCheonanMedia },
   { id: "chungnam",      name: "충청남도 공식",              url: "https://www.chungnam.go.kr/main.do",                                                              fetch: fetchChungnamOfficial },
   { id: "chungnam-contest", name: "충청남도 공모전",         url: "https://www.chungnam.go.kr/contest.do",                                                           fetch: fetchChungnamContest },

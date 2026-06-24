@@ -1,4 +1,4 @@
-name: Fetch MOEL Notices
+name: Fetch External Notices
 
 on:
   schedule:
@@ -20,7 +20,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Fetch MOEL notices and push to data branch
+      - name: Fetch MOEL notices
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/fetch-moel.js
+
+      - name: Fetch korchamhrd notices
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-korchamhrd.js
+
+      - name: Fetch kacpta notices (EUC-KR via iconv)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-kacpta.js
+
+      - name: Fetch cheonan-family notices
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-cheonan-family.js

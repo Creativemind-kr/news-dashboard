@@ -199,47 +199,45 @@ async function fetchMoel(): Promise<Notice[]> {
   }
 }
 
-// 한국세무사회 — 직접 크롤링 (Vercel 서울 리전에서 실행, icn1)
+// 한국세무사회 — GitHub Actions JSON 우선, 직접 크롤링 fallback
 async function fetchKacpta(): Promise<Notice[]> {
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kacpta-notices.json",
+      { cache: "no-store" }
+    );
+    if (res.ok) {
+      const items: { title: string; link: string; date: string }[] = await res.json();
+      if (items.length > 0) {
+        return items.slice(0, 5).map((item) => ({
+          title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+        }));
+      }
+    }
+  } catch {}
+
+  // fallback: 직접 크롤링 (Vercel IP 차단 시 빈 배열 반환)
   const base = "https://license.kacpta.or.kr";
   try {
     const html = await fetchHtml(`${base}/web/notice/notice.aspx`, "euc-kr");
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
-    // 테이블 클래스: table_notice → tb_list (사이트 리뉴얼)
-    $("table.tb_list tr, table tr").each((_, el) => {
-      if ($(el).find("th").length > 0) return;
-      let title = "";
-      let link = `${base}/web/notice/notice.aspx`;
-
-      // 구 방식: td[onclick] + sNo.value 패턴
+    // table.table_notice — sNo.value onclick 패턴
+    $("table.table_notice tr").each((_, el) => {
       const onclickText = $(el).find("td[onclick]").first().attr("onclick") ?? "";
       const sNoMatch = onclickText.match(/sNo\.value='(\d+)'/);
-      if (sNoMatch) {
-        const titleTd = $(el).find("td[onclick]").eq(1);
-        const rawHtml = titleTd.html() ?? "";
-        title = rawHtml.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/\s+/g, " ").trim();
-        link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNoMatch[1]}`;
-      } else {
-        // 신 방식: 일반 <a> 링크
-        const a = $(el).find("a").first();
-        if (!a.length) return;
-        title = a.text().trim().replace(/\s+/g, " ");
-        const href = a.attr("href") ?? "";
-        link = href.startsWith("http") ? href
-          : href.startsWith("/") ? `${base}${href}`
-          : `${base}/web/notice/notice.aspx`;
-      }
-
+      if (!sNoMatch) return;
+      const titleTd = $(el).find("td[onclick]").eq(1);
+      const rawHtml = titleTd.html() ?? "";
+      const title = rawHtml.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/\s+/g, " ").trim();
       if (!title || title.length < 3) return;
       const date = parseDate($(el).text());
+      const link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNoMatch[1]}`;
       notices.push({ title, date, link, isNew: isWithin3Days(date) });
     });
     return notices.slice(0, 5);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 // 산업인력공단 — EUC-KR 강제 디코딩
@@ -500,34 +498,48 @@ async function fetchChungnamContest(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 천안시다문화가족지원센터
+// 천안시다문화가족지원센터 — GitHub Actions JSON 우선, 직접 크롤링 fallback
 async function fetchCheonanFamily(): Promise<Notice[]> {
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/cheonan-family-notices.json",
+      { cache: "no-store" }
+    );
+    if (res.ok) {
+      const items: { title: string; link: string; date: string }[] = await res.json();
+      if (items.length > 0) {
+        return items.slice(0, 5).map((item) => ({
+          title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+        }));
+      }
+    }
+  } catch {}
+
+  // fallback: 직접 크롤링 (Vercel IP 차단 시 빈 배열 반환)
   const base = "https://chungnamcheonansi.familynet.or.kr";
   const boardBase = `${base}/center/lay1/bbs/S295T311C312/A/6`;
-  // Referer 추가 + timeout 10s (일부 government 사이트에서 Referer 없으면 빈 응답)
-  const html = await fetchHtml(`${boardBase}/list.do`, "utf-8", 10000, {
-    Referer: `${base}/center/`,
-  });
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  // <tr><td><a href="view.do?article_seq=...">제목</a></td><td><strong>작성일</strong>YYYY-MM-DD</td></tr>
-  $("table tr").each((_, el) => {
-    if ($(el).find("th").length > 0) return;
-    const a = $(el).find("a[href*='article_seq']").first();
-    if (!a.length) return;
-    const title = a.text().trim().replace(/\s+/g, " ");
-    if (!title || title.length < 3) return;
-    const href = a.attr("href") ?? "";
-    const tds = $(el).find("td");
-    const dateTd = tds.eq(1).text().replace("작성일", "").trim();
-    const date = parseDate(dateTd || $(el).text());
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${boardBase}/${href}`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  try {
+    const html = await fetchHtml(`${boardBase}/list.do`, "utf-8", 10000, {
+      Referer: `${base}/center/`,
+    });
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    // table.list_style_1 — td.tit 안에 <a href="view.do?article_seq=...">
+    $("table tr").each((_, el) => {
+      const a = $(el).find("a[href*='article_seq']").first();
+      if (!a.length) return;
+      const title = a.text().trim().replace(/\s+/g, " ");
+      if (!title || title.length < 3) return;
+      const href = a.attr("href") ?? "";
+      const date = parseDate($(el).text());
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : `${boardBase}/${href}`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
 }
 
 // 천안과학산업진흥원 (cistep.re.kr)
@@ -551,45 +563,45 @@ async function fetchCistep(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
-// 충남상공회의소 HRD (cn.korchamhrd.net)
+// 충남상공회의소 HRD — GitHub Actions JSON 우선, 직접 크롤링 fallback
 async function fetchKorchamhrd(): Promise<Notice[]> {
+  try {
+    const res = await fetch(
+      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/korchamhrd-notices.json",
+      { cache: "no-store" }
+    );
+    if (res.ok) {
+      const items: { title: string; link: string; date: string }[] = await res.json();
+      if (items.length > 0) {
+        return items.slice(0, 5).map((item) => ({
+          title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+        }));
+      }
+    }
+  } catch {}
+
+  // fallback: 직접 크롤링 (Vercel IP 차단 시 빈 배열 반환)
   const base = "https://cn.korchamhrd.net";
   const listUrl = `${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`;
-  const html = await fetchHtml(listUrl);
-  if (!html) return [];
-  const $ = cheerio.load(html);
-  const notices: Notice[] = [];
-  // 제목은 3번째 td(index=2), 날짜는 5번째 td(index=4)
-  // onclick 함수명이 funcGoDetail → funcMenuCall로 변경된 경우 모두 처리
-  $("table tr, table tbody tr").each((_, el) => {
-    const tds = $(el).find("td");
-    if (tds.length < 4) return;
-    const titleTd = tds.eq(2).length ? tds.eq(2) : tds.eq(1);
-    const title = titleTd.text().trim().replace(/\s+/g, " ");
-    if (!title || title.length < 3) return;
-
-    const date = parseDate(tds.last().text().trim() || tds.eq(4).text().trim());
-
-    // 링크: 행 전체에서 onclick 수집 → URL 추출 시도
-    const allOnclick = $(el).find("[onclick]").toArray()
-      .map((e) => ($(e).attr("onclick") ?? "")).join(" ");
-    const onclick = allOnclick || $(el).attr("onclick") ?? "";
-
-    // funcMenuCall('/bbs/bbsDetail.do?...') — 첫 번째 인수가 URL인 경우
-    const urlMatch = onclick.match(/funcMenuCall\s*\(\s*'([^']+bbs[^']+)'/);
-    // funcGoDetail, funcGoView, fn_view 등 — 두 번째 인수가 숫자 key인 경우
-    const keyMatch = onclick.match(/func\w+\s*\([^,]*,\s*'(\d{4,})'/);
-
-    let link = listUrl;
-    if (urlMatch) {
-      link = urlMatch[1].startsWith("/") ? `${base}${urlMatch[1]}` : urlMatch[1];
-    } else if (keyMatch) {
-      link = `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`;
-    }
-
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
-  });
-  return notices.slice(0, 5);
+  try {
+    const html = await fetchHtml(listUrl);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    // td.title.pc_list[onclick*='funcGoDetail'] — 제목 + key 추출
+    $("td.title.pc_list[onclick]").each((_, el) => {
+      const title = $(el).text().trim().replace(/\s+/g, " ");
+      if (!title || title.length < 3) return;
+      const onclick = $(el).attr("onclick") ?? "";
+      const keyMatch = onclick.match(/funcGoDetail\('[^']*','(\d+)'/);
+      const date = parseDate($(el).closest("tr").find("td.notice_date").text());
+      const link = keyMatch
+        ? `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`
+        : listUrl;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
+  } catch { return []; }
 }
 
 // 충남콘텐츠진흥원 — 카드형 게시판 (www.ccon.kr)

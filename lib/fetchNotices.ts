@@ -468,12 +468,17 @@ async function fetchCheonanFamily(): Promise<Notice[]> {
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("tbody tr").each((_, el) => {
-    const a = $(el).find("td.tit a").first();
+  $("table tr").each((_, el) => {
+    if ($(el).find("th").length > 0) return;
+    const a = $(el).find("a[href*='article_seq']").first();
     const title = a.text().trim().replace(/\s+/g, " ");
     const href = a.attr("href") ?? "";
-    const date = $(el).find("td.tit ul li:first-child span").text().trim();
     if (!title || title.length < 3) return;
+    let date = "";
+    $(el).find("td").each((_, td) => {
+      const txt = $(td).text().trim();
+      if (!date && /^\d{4}-\d{2}-\d{2}$/.test(txt)) date = txt;
+    });
     const link = href ? `${boardBase}/${href}` : `${boardBase}/list.do`;
     notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
@@ -504,20 +509,19 @@ async function fetchCistep(): Promise<Notice[]> {
 // 충남상공회의소 HRD (cn.korchamhrd.net)
 async function fetchKorchamhrd(): Promise<Notice[]> {
   const base = "https://cn.korchamhrd.net";
-  const html = await fetchHtml(`${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`);
+  const listUrl = `${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`;
+  const html = await fetchHtml(listUrl);
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("tbody tr").each((_, el) => {
+  // 사이트가 <tbody> 없이 <table><tr> 구조 사용, onclick 기반 네비게이션
+  $("table tr").each((_, el) => {
+    if ($(el).find("th").length > 0) return;
     const a = $(el).find("td:nth-child(3) a").first();
     const title = a.text().trim().replace(/\s+/g, " ");
-    const href = a.attr("href") ?? "";
     const date = parseDate($(el).find("td:nth-child(5)").text().trim());
     if (!title || title.length < 3) return;
-    const link = href.startsWith("http") ? href
-      : href.startsWith("/") ? `${base}${href}`
-      : `${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`;
-    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    notices.push({ title, date, link: listUrl, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }
@@ -559,19 +563,27 @@ async function fetchWork24(): Promise<Notice[]> {
   } catch { return []; }
 }
 
-// 온통청년 (youthcenter.go.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+// 온통청년 (youthcenter.go.kr) — 공지사항 직접 크롤링
 async function fetchYouthCenter(): Promise<Notice[]> {
-  try {
-    const res = await fetch(
-      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/youthcenter-notices.json",
-      { cache: "no-store" }
-    );
-    if (!res.ok) return [];
-    const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.slice(0, 5).map((item) => ({
-      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
-    }));
-  } catch { return []; }
+  const base = "https://www.youthcenter.go.kr";
+  const listUrl = `${base}/bbs01List/54`;
+  const html = await fetchHtml(listUrl);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tr").each((_, el) => {
+    if ($(el).find("th").length > 0) return;
+    const a = $(el).find("a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    if (!title || title.length < 3) return;
+    const date = parseDate($(el).text());
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : listUrl;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
 }
 
 // K-START UP — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
@@ -589,19 +601,27 @@ async function fetchKStartup(): Promise<Notice[]> {
   } catch { return []; }
 }
 
-// 한국과학창의재단 (kosac.re.kr) — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+// 한국과학창의재단 (kosac.re.kr) — 사업공고 직접 크롤링
 async function fetchKosac(): Promise<Notice[]> {
-  try {
-    const res = await fetch(
-      "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kosac-notices.json",
-      { cache: "no-store" }
-    );
-    if (!res.ok) return [];
-    const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.slice(0, 5).map((item) => ({
-      title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
-    }));
-  } catch { return []; }
+  const base = "https://www.kosac.re.kr";
+  const listUrl = `${base}/menus/274/bns`;
+  const html = await fetchHtml(listUrl);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tr").each((_, el) => {
+    if ($(el).find("th").length > 0) return;
+    const a = $(el).find("a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    if (!title || title.length < 3) return;
+    const date = parseDate($(el).text());
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : listUrl;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
 }
 
 // KOSAC 과제관리 (pmsnew.kosac.re.kr) — 사업공고 접수중 목록 직접 파싱 (서버사이드 렌더링)
@@ -645,9 +665,9 @@ const PUBLIC_SOURCES = [
   { id: "hrdi",       name: "능력개발교육원",     url: "https://hrdi.koreatech.ac.kr/?m1=page&menu_id=11",           fetch: fetchHrdi },
   { id: "nipa",       name: "정보통신산업진흥원", url: "https://www.nipa.kr/home/2-2?tab=1",                        fetch: fetchNipa },
   { id: "work24",     name: "국비훈련(고용24)",   url: "https://www.work24.go.kr/cm/main.do",                        fetch: fetchWork24 },
-  { id: "youth-center", name: "온통청년",         url: "https://www.youthcenter.go.kr/main",                         fetch: fetchYouthCenter },
+  { id: "youth-center", name: "온통청년",         url: "https://www.youthcenter.go.kr/bbs01List/54",                 fetch: fetchYouthCenter },
   { id: "kstartup",   name: "K-START UP",         url: "https://www.k-startup.go.kr/web/main/index.do",              fetch: fetchKStartup },
-  { id: "kosac",      name: "한국과학창의재단",   url: "https://www.kosac.re.kr/main",                               fetch: fetchKosac },
+  { id: "kosac",      name: "한국과학창의재단",   url: "https://www.kosac.re.kr/menus/274/bns",                      fetch: fetchKosac },
   { id: "kosac-pms",  name: "KOSAC 과제관리",     url: "https://pmsnew.kosac.re.kr/bizPbanc/rcpt/rcptPbancList.do",  fetch: fetchKosacPms },
 ];
 

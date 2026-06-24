@@ -1,50 +1,26 @@
-name: Fetch Moel Notices
+name: Fetch MOEL Notices
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '30 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout data branch
+      - name: Checkout main branch
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          ref: data
+          node-version: '20'
 
-      - name: Fetch moel RSS and save JSON
-        run: |
-          XML=$(curl -sk --max-time 30 --retry 3 --retry-delay 5 "https://www.moel.go.kr/rss/notice.do")
-          echo "=== RAW RSS TITLES ==="
-          echo "$XML" | grep -oP '(?<=<!\[CDATA\[).*?(?=\]\]>)' | head -20
-          JSON=$(node -e "
-            const xml = \`$XML\`;
-            const items = xml.split('<item>').slice(1);
-            const all = items.slice(0,20).map(block => {
-              const title = (block.match(/CDATA\[([\s\S]*?)\]\]/) || [])[1]?.trim() || '';
-              const link  = (block.match(/<link>([\s\S]*?)<\/link>/) || [])[1]?.trim() || '';
-              const date  = (block.match(/<dc:date>([\s\S]*?)<\/dc:date>/) || [])[1]?.trim().slice(0,10) || '';
-              return { title, link, date };
-            }).filter(n => n.title.length > 2);
-            process.stderr.write('All titles:\n' + all.map(n=>n.title).join('\n') + '\n');
-            const notices = all.filter(n => n.title.startsWith('[공고]')).slice(0,5);
-            process.stdout.write(JSON.stringify(notices));
-          ")
-          echo "Fetched: $JSON"
-          echo "$JSON" > moel-notices.json
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add moel-notices.json
-          git diff --cached --quiet || git commit -m "update moel notices $(date -u '+%Y-%m-%d %H:%M')"
-          git push origin data
+      - name: Fetch MOEL notices and push to data branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-moel.js

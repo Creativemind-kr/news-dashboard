@@ -151,21 +151,44 @@ async function fetchCqnet(): Promise<Notice[]> {
   }
 }
 
-// 고용노동부 — GitHub Actions가 매시간 갱신하는 JSON 파일 읽기
+// 고용노동부 — GitHub Actions JSON 우선, 실패 시 직접 크롤링
 async function fetchMoel(): Promise<Notice[]> {
+  // 1차: GitHub raw JSON (GH Actions 매시간 갱신)
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/moel-notices.json",
       { cache: "no-store" }
     );
-    if (!res.ok) return [];
-    const items: { title: string; link: string; date: string }[] = await res.json();
-    return items.filter((item) => item.title.startsWith("[공고]")).slice(0, 5).map((item) => ({
-      title: item.title,
-      date: item.date,
-      link: item.link,
-      isNew: isWithin3Days(item.date),
-    }));
+    if (res.ok) {
+      const items: { title: string; link: string; date: string }[] = await res.json();
+      const filtered = items.filter((item) => item.title.startsWith("[공고]")).slice(0, 5);
+      if (filtered.length > 0) {
+        return filtered.map((item) => ({
+          title: item.title, date: item.date, link: item.link, isNew: isWithin3Days(item.date),
+        }));
+      }
+    }
+  } catch {}
+
+  // 2차 fallback: 직접 크롤링
+  const base = "https://www.moel.go.kr";
+  try {
+    const html = await fetchHtml(`${base}/news/notice/noticeList.do`);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const notices: Notice[] = [];
+    $("table tbody tr").each((_, el) => {
+      const a = $(el).find("a").first();
+      const title = a.text().trim().replace(/\s+/g, " ");
+      const href = a.attr("href") ?? "";
+      if (!title.startsWith("[공고]") || title.length < 5) return;
+      const date = parseDate($(el).text());
+      const link = href.startsWith("http") ? href
+        : href.startsWith("/") ? `${base}${href}`
+        : `${base}/news/notice/noticeList.do`;
+      notices.push({ title, date, link, isNew: isWithin3Days(date) });
+    });
+    return notices.slice(0, 5);
   } catch {
     return [];
   }
@@ -179,7 +202,8 @@ async function fetchKacpta(): Promise<Notice[]> {
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
-    $("table.table_notice tbody tr").each((_, el) => {
+    // 사이트에 <tbody> 없이 <table><tr> 구조 사용
+    $("table.table_notice tr").each((_, el) => {
       const onclickText = $(el).find("td[onclick]").first().attr("onclick") ?? "";
       const sNoMatch = onclickText.match(/sNo\.value='(\d+)'/);
       if (!sNoMatch) return;
@@ -468,18 +492,16 @@ async function fetchCheonanFamily(): Promise<Notice[]> {
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  $("table tr").each((_, el) => {
-    if ($(el).find("th").length > 0) return;
-    const a = $(el).find("a[href*='article_seq']").first();
-    const title = a.text().trim().replace(/\s+/g, " ");
-    const href = a.attr("href") ?? "";
+  // 사이트가 div/li 기반으로 리뉴얼됨 — article_seq 링크를 직접 탐색
+  $("a[href*='article_seq']").each((_, el) => {
+    const title = $(el).text().trim().replace(/\s+/g, " ");
+    const href = $(el).attr("href") ?? "";
     if (!title || title.length < 3) return;
-    let date = "";
-    $(el).find("td").each((_, td) => {
-      const txt = $(td).text().trim();
-      if (!date && /^\d{4}-\d{2}-\d{2}$/.test(txt)) date = txt;
-    });
-    const link = href ? `${boardBase}/${href}` : `${boardBase}/list.do`;
+    const container = $(el).closest("li, tr, article, .item");
+    const containerText = container.length ? container.text() : $(el).parent().text();
+    const dateMatch = containerText.match(/(\d{4}-\d{2}-\d{2})/);
+    const date = dateMatch ? dateMatch[1] : "";
+    const link = `${boardBase}/${href}`;
     notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
@@ -514,14 +536,19 @@ async function fetchKorchamhrd(): Promise<Notice[]> {
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  // 사이트가 <tbody> 없이 <table><tr> 구조 사용, onclick 기반 네비게이션
+  // 제목은 td.title[onclick]에, <a> 태그 없이 td onclick으로 네비게이션
   $("table tr").each((_, el) => {
     if ($(el).find("th").length > 0) return;
-    const a = $(el).find("td:nth-child(3) a").first();
-    const title = a.text().trim().replace(/\s+/g, " ");
-    const date = parseDate($(el).find("td:nth-child(5)").text().trim());
+    const titleTd = $(el).find("td.title").first();
+    const title = titleTd.text().trim().replace(/\s+/g, " ");
+    const onclick = titleTd.attr("onclick") ?? "";
+    const keyMatch = onclick.match(/funcGoDetail\([^,]*,\s*'(\d+)'/);
+    const date = parseDate($(el).find("td.notice_date").text().trim());
     if (!title || title.length < 3) return;
-    notices.push({ title, date, link: listUrl, isNew: isWithin3Days(date) });
+    const link = keyMatch
+      ? `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`
+      : listUrl;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
 }

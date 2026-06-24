@@ -45,12 +45,17 @@ const HEADERS = {
   "Accept-Language": "ko-KR,ko;q=0.9",
 };
 
-async function fetchHtml(url: string, encoding = "utf-8"): Promise<string> {
+async function fetchHtml(
+  url: string,
+  encoding = "utf-8",
+  timeoutMs = 5000,
+  extraHeaders: Record<string, string> = {}
+): Promise<string> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, {
-      headers: HEADERS,
+      headers: { ...HEADERS, ...extraHeaders },
       next: { revalidate: 1800 },
       signal: controller.signal,
     });
@@ -202,22 +207,33 @@ async function fetchKacpta(): Promise<Notice[]> {
     if (!html) return [];
     const $ = cheerio.load(html);
     const notices: Notice[] = [];
-    // Cheerio가 tbody 자동 삽입 — class 조건 완화, 둘 다 시도
-    $("table.table_notice tr, table.table_notice tbody tr").each((_, el) => {
+    // 테이블 클래스: table_notice → tb_list (사이트 리뉴얼)
+    $("table.tb_list tr, table tr").each((_, el) => {
+      if ($(el).find("th").length > 0) return;
+      let title = "";
+      let link = `${base}/web/notice/notice.aspx`;
+
+      // 구 방식: td[onclick] + sNo.value 패턴
       const onclickText = $(el).find("td[onclick]").first().attr("onclick") ?? "";
       const sNoMatch = onclickText.match(/sNo\.value='(\d+)'/);
-      if (!sNoMatch) return;
-      const sNo = sNoMatch[1];
+      if (sNoMatch) {
+        const titleTd = $(el).find("td[onclick]").eq(1);
+        const rawHtml = titleTd.html() ?? "";
+        title = rawHtml.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/\s+/g, " ").trim();
+        link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNoMatch[1]}`;
+      } else {
+        // 신 방식: 일반 <a> 링크
+        const a = $(el).find("a").first();
+        if (!a.length) return;
+        title = a.text().trim().replace(/\s+/g, " ");
+        const href = a.attr("href") ?? "";
+        link = href.startsWith("http") ? href
+          : href.startsWith("/") ? `${base}${href}`
+          : `${base}/web/notice/notice.aspx`;
+      }
 
-      // 두 번째 onclick td가 제목 td
-      // cheerio .text()는 <2025 개정세법> 같은 꺽쇠 텍스트를 태그로 오인하므로
-      // 실제 HTML 태그(알파벳 시작)만 제거하는 방식 사용
-      const titleTd = $(el).find("td[onclick]").eq(1);
-      const rawHtml = titleTd.html() ?? "";
-      const title = rawHtml.replace(/<\/?[a-zA-Z][^>]*>/g, "").replace(/\s+/g, " ").trim();
-      const date = parseDate($(el).find("td").last().text());
       if (!title || title.length < 3) return;
-      const link = `${base}/web/notice/notice.aspx?dsp_mode=Show&sNo=${sNo}`;
+      const date = parseDate($(el).text());
       notices.push({ title, date, link, isNew: isWithin3Days(date) });
     });
     return notices.slice(0, 5);
@@ -488,20 +504,27 @@ async function fetchChungnamContest(): Promise<Notice[]> {
 async function fetchCheonanFamily(): Promise<Notice[]> {
   const base = "https://chungnamcheonansi.familynet.or.kr";
   const boardBase = `${base}/center/lay1/bbs/S295T311C312/A/6`;
-  const html = await fetchHtml(`${boardBase}/list.do`);
+  // Referer 추가 + timeout 10s (일부 government 사이트에서 Referer 없으면 빈 응답)
+  const html = await fetchHtml(`${boardBase}/list.do`, "utf-8", 10000, {
+    Referer: `${base}/center/`,
+  });
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  // 사이트가 div/li 기반으로 리뉴얼됨 — article_seq 링크를 직접 탐색
-  $("a[href*='article_seq']").each((_, el) => {
-    const title = $(el).text().trim().replace(/\s+/g, " ");
-    const href = $(el).attr("href") ?? "";
+  // <tr><td><a href="view.do?article_seq=...">제목</a></td><td><strong>작성일</strong>YYYY-MM-DD</td></tr>
+  $("table tr").each((_, el) => {
+    if ($(el).find("th").length > 0) return;
+    const a = $(el).find("a[href*='article_seq']").first();
+    if (!a.length) return;
+    const title = a.text().trim().replace(/\s+/g, " ");
     if (!title || title.length < 3) return;
-    const container = $(el).closest("li, tr, article, .item");
-    const containerText = container.length ? container.text() : $(el).parent().text();
-    const dateMatch = containerText.match(/(\d{4}-\d{2}-\d{2})/);
-    const date = dateMatch ? dateMatch[1] : "";
-    const link = `${boardBase}/${href}`;
+    const href = a.attr("href") ?? "";
+    const tds = $(el).find("td");
+    const dateTd = tds.eq(1).text().replace("작성일", "").trim();
+    const date = parseDate(dateTd || $(el).text());
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${boardBase}/${href}`;
     notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);
@@ -536,19 +559,34 @@ async function fetchKorchamhrd(): Promise<Notice[]> {
   if (!html) return [];
   const $ = cheerio.load(html);
   const notices: Notice[] = [];
-  // 제목은 3번째 td(index=2), 날짜는 5번째 td(index=4), onclick에서 key 추출
+  // 제목은 3번째 td(index=2), 날짜는 5번째 td(index=4)
+  // onclick 함수명이 funcGoDetail → funcMenuCall로 변경된 경우 모두 처리
   $("table tr, table tbody tr").each((_, el) => {
     const tds = $(el).find("td");
-    if (tds.length < 5) return; // 헤더행(th) 또는 불완전한 행 제외
-    const titleTd = tds.eq(2);
+    if (tds.length < 4) return;
+    const titleTd = tds.eq(2).length ? tds.eq(2) : tds.eq(1);
     const title = titleTd.text().trim().replace(/\s+/g, " ");
-    const onclick = titleTd.attr("onclick") ?? $(el).find("[onclick*='funcGoDetail']").first().attr("onclick") ?? "";
-    const keyMatch = onclick.match(/funcGoDetail\([^,]*,\s*'(\d+)'/);
-    const date = parseDate(tds.eq(4).text().trim());
     if (!title || title.length < 3) return;
-    const link = keyMatch
-      ? `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`
-      : listUrl;
+
+    const date = parseDate(tds.last().text().trim() || tds.eq(4).text().trim());
+
+    // 링크: 행 전체에서 onclick 수집 → URL 추출 시도
+    const allOnclick = $(el).find("[onclick]").toArray()
+      .map((e) => ($(e).attr("onclick") ?? "")).join(" ");
+    const onclick = allOnclick || $(el).attr("onclick") ?? "";
+
+    // funcMenuCall('/bbs/bbsDetail.do?...') — 첫 번째 인수가 URL인 경우
+    const urlMatch = onclick.match(/funcMenuCall\s*\(\s*'([^']+bbs[^']+)'/);
+    // funcGoDetail, funcGoView, fn_view 등 — 두 번째 인수가 숫자 key인 경우
+    const keyMatch = onclick.match(/func\w+\s*\([^,]*,\s*'(\d{4,})'/);
+
+    let link = listUrl;
+    if (urlMatch) {
+      link = urlMatch[1].startsWith("/") ? `${base}${urlMatch[1]}` : urlMatch[1];
+    } else if (keyMatch) {
+      link = `${base}/bbs/bbsDetail.do?rootMenuId=3766&menuId=3767&bbs_id=141&bbs_key=${keyMatch[1]}`;
+    }
+
     notices.push({ title, date, link, isNew: isWithin3Days(date) });
   });
   return notices.slice(0, 5);

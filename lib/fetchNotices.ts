@@ -480,6 +480,48 @@ async function fetchCheonanFamily(): Promise<Notice[]> {
   return notices.slice(0, 5);
 }
 
+// 천안과학산업진흥원 (cistep.re.kr)
+async function fetchCistep(): Promise<Notice[]> {
+  const base = "https://www.cistep.re.kr";
+  const html = await fetchHtml(`${base}/zboard/list.do?lmCode=notice`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("table tbody tr").each((_, el) => {
+    const a = $(el).find("td:nth-child(2) a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td:nth-child(4)").text().trim());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/zboard/list.do?lmCode=notice`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
+// 충남상공회의소 HRD (cn.korchamhrd.net)
+async function fetchKorchamhrd(): Promise<Notice[]> {
+  const base = "https://cn.korchamhrd.net";
+  const html = await fetchHtml(`${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`);
+  if (!html) return [];
+  const $ = cheerio.load(html);
+  const notices: Notice[] = [];
+  $("tbody tr").each((_, el) => {
+    const a = $(el).find("td:nth-child(3) a").first();
+    const title = a.text().trim().replace(/\s+/g, " ");
+    const href = a.attr("href") ?? "";
+    const date = parseDate($(el).find("td:nth-child(5)").text().trim());
+    if (!title || title.length < 3) return;
+    const link = href.startsWith("http") ? href
+      : href.startsWith("/") ? `${base}${href}`
+      : `${base}/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141`;
+    notices.push({ title, date, link, isNew: isWithin3Days(date) });
+  });
+  return notices.slice(0, 5);
+}
+
 // 충남콘텐츠진흥원 — 카드형 게시판 (www.ccon.kr)
 async function fetchCcon(): Promise<Notice[]> {
   const base = "https://www.ccon.kr";
@@ -620,6 +662,8 @@ const CHUNGNAM_SOURCES = [
   { id: "chungnam-contest", name: "충청남도 공모전",         url: "https://www.chungnam.go.kr/contest.do",                                                           fetch: fetchChungnamContest },
   { id: "cheonan-family",   name: "천안다문화가족지원센터",  url: "https://chungnamcheonansi.familynet.or.kr/center/",                                               fetch: fetchCheonanFamily },
   { id: "ccon",             name: "충남콘텐츠진흥원",        url: "https://ccon.kr/bbs/board.php?bo_table=bsnt",                                                     fetch: fetchCcon },
+  { id: "cistep",           name: "천안과학산업진흥원",      url: "https://www.cistep.re.kr/zboard/list.do?lmCode=notice",                                            fetch: fetchCistep },
+  { id: "korchamhrd",       name: "충남상공회의소HRD",       url: "https://cn.korchamhrd.net/bbs/bbsList.do?rootMenuId=3766&menuId=3767&bbs_id=141",                 fetch: fetchKorchamhrd },
 ];
 
 export async function getAllNotices(): Promise<NoticeSource[]> {

@@ -154,19 +154,17 @@ function isYesterday(dateStr: string): boolean {
 }
 
 export async function getDailyNews(): Promise<Category[]> {
-  const results: Category[] = [];
-  for (const cat of CATEGORIES) {
-    // 어제 기사를 충분히 확보하기 위해 100개 요청 후 필터링
-    const query = cat.query;
-    const raw = await fetchNaver(query, 100, "date");
-    const yesterday = raw.filter((item) => isYesterday(item.date));
-    const filtered = yesterday.filter((item) => isRelevant(item, cat.keywords));
-    const news = (filtered.length > 0 ? filtered : yesterday).slice(0, 5);
-    const summary = news.slice(0, 3).map((n) => n.title).join(" · ") || "어제 뉴스가 없습니다.";
-    results.push({ ...cat, summary, news });
-    await delay(200);
-  }
-  return results;
+  return Promise.all(
+    CATEGORIES.map(async (cat) => {
+      // 어제 기사를 충분히 확보하기 위해 100개 요청 후 필터링
+      const raw = await fetchNaver(cat.query, 100, "date");
+      const yesterday = raw.filter((item) => isYesterday(item.date));
+      const filtered = yesterday.filter((item) => isRelevant(item, cat.keywords));
+      const news = (filtered.length > 0 ? filtered : yesterday).slice(0, 5);
+      const summary = news.slice(0, 3).map((n) => n.title).join(" · ") || "어제 뉴스가 없습니다.";
+      return { ...cat, summary, news };
+    })
+  );
 }
 
 export async function getWeeklyTop(): Promise<Category[]> {

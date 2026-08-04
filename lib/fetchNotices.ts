@@ -162,7 +162,7 @@ async function fetchMoel(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/moel-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (res.ok) {
       const items: { title: string; link: string; date: string }[] = await res.json();
@@ -204,7 +204,7 @@ async function fetchKacpta(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kacpta-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (res.ok) {
       const items: { title: string; link: string; date: string }[] = await res.json();
@@ -503,7 +503,7 @@ async function fetchCheonanFamily(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/cheonan-family-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (res.ok) {
       const items: { title: string; link: string; date: string }[] = await res.json();
@@ -568,7 +568,7 @@ async function fetchKorchamhrd(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/korchamhrd-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (res.ok) {
       const items: { title: string; link: string; date: string }[] = await res.json();
@@ -631,7 +631,7 @@ async function fetchWork24(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/work24-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (!res.ok) return [];
     const items: { title: string; link: string; date: string }[] = await res.json();
@@ -669,7 +669,7 @@ async function fetchKStartup(): Promise<Notice[]> {
   try {
     const res = await fetch(
       "https://raw.githubusercontent.com/Creativemind-kr/news-dashboard/data/kstartup-notices.json",
-      { cache: "no-store" }
+      { next: { revalidate: 1800 } }
     );
     if (!res.ok) return [];
     const items: { title: string; link: string; date: string }[] = await res.json();

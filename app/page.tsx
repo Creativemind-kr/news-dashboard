@@ -1,14 +1,16 @@
 import { getDailyNews } from "@/lib/fetchNews";
 import { getAllNotices } from "@/lib/fetchNotices";
+import { getG2bBids } from "@/lib/fetchG2b";
 import { TabNav } from "@/components/TabNav";
 
 export const revalidate = 1800;
 export const preferredRegion = "icn1";
 
 export default async function Home() {
-  const [daily, notices] = await Promise.all([
+  const [daily, notices, g2b] = await Promise.all([
     getDailyNews(),
     getAllNotices(),
+    getG2bBids(),
   ]);
 
   const today = new Date().toLocaleDateString("ko-KR", {
@@ -18,10 +20,9 @@ export default async function Home() {
     weekday: "long",
   });
 
-  const newCount = notices.reduce(
-    (acc, s) => acc + s.notices.filter((n) => n.isNew).length,
-    0
-  );
+  const newCount =
+    notices.reduce((acc, s) => acc + s.notices.filter((n) => n.isNew).length, 0) +
+    g2b.bids.filter((b) => b.isNew && b.canJoin).length;
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -38,7 +39,7 @@ export default async function Home() {
           )}
         </div>
       </header>
-      <TabNav daily={daily} notices={notices} />
+      <TabNav daily={daily} notices={notices} g2b={g2b} />
     </main>
   );
 }

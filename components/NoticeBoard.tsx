@@ -1,4 +1,6 @@
 import type { NoticeSource } from "@/lib/fetchNotices";
+import type { G2bResult } from "@/lib/fetchG2b";
+import { G2bBoard } from "@/components/G2bBoard";
 
 const SOURCE_COLORS: Record<string, string> = {
   hira:          "border-blue-400 bg-blue-50 text-blue-700",
@@ -107,7 +109,7 @@ function SectionHeader({ title, sources }: { title: string; sources: NoticeSourc
   );
 }
 
-export function NoticeBoard({ sources }: { sources: NoticeSource[] }) {
+export function NoticeBoard({ sources, g2b }: { sources: NoticeSource[]; g2b: G2bResult }) {
   const publicSources = sources
     .filter((s) => s.group === "public")
     .sort((a, b) => (a.notices.length === 0 ? 1 : 0) - (b.notices.length === 0 ? 1 : 0));
@@ -117,6 +119,9 @@ export function NoticeBoard({ sources }: { sources: NoticeSource[] }) {
 
   return (
     <div className="space-y-10">
+      {/* 나라장터 용역공고 */}
+      <G2bBoard data={g2b} />
+
       {/* 공용 사업공고 모니터 */}
       <div>
         <SectionHeader title="공용 사업공고 모니터" sources={publicSources} />

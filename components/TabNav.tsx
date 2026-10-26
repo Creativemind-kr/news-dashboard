@@ -14,6 +14,7 @@ import {
 } from "@/lib/top5";
 import type { Category, HotTopic, CompetitorGroup } from "@/lib/fetchNews";
 import type { NoticeSource } from "@/lib/fetchNotices";
+import type { G2bResult } from "@/lib/fetchG2b";
 
 const TABS = [
   { id: "notice",     label: "📌 사업공고" },
@@ -28,6 +29,7 @@ const TABS = [
 interface Props {
   daily: Category[];
   notices: NoticeSource[];
+  g2b: G2bResult;
 }
 
 type CacheData = {
@@ -40,7 +42,7 @@ type CacheData = {
   competitor?: CompetitorGroup[];
 };
 
-export function TabNav({ daily, notices }: Props) {
+export function TabNav({ daily, notices, g2b }: Props) {
   const [active, setActive] = useState("notice");
   const [loadingTab, setLoadingTab] = useState<string | null>(null);
   const [cache, setCache] = useState<CacheData>({ daily, notice: notices });
@@ -96,7 +98,7 @@ export function TabNav({ daily, notices }: Props) {
   const renderMain = () => {
     if (isLoading) return <Spinner />;
     if (active === "notice" && cache.notice)
-      return <NoticeBoard sources={cache.notice} />;
+      return <NoticeBoard sources={cache.notice} g2b={g2b} />;
     if (active === "daily" && cache.daily)
       return <CategoryGrid categories={cache.daily} showSummary />;
     if (active === "google" && cache.google)

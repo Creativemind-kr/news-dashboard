@@ -95,6 +95,11 @@ export function G2bBoard({ data }: { data: G2bResult }) {
         <div className="flex items-baseline gap-2 min-w-0">
           <h3 className="text-sm font-bold shrink-0">나라장터 용역공고</h3>
           {data.ok && <span className="text-xs opacity-70 truncate">천안 참가 가능 {joinable.length}건</span>}
+          {data.staleAsOf && (
+            <span className="text-xs text-amber-700 shrink-0" title="조달청 응답 오류로 마지막으로 받아 온 목록을 보여 줍니다">
+              {data.staleAsOf} 기준
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {newCount > 0 && (

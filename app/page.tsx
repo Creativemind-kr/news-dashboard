@@ -5,6 +5,8 @@ import { TabNav } from "@/components/TabNav";
 
 export const revalidate = 1800;
 export const preferredRegion = "icn1";
+// 나라장터 응답이 페이지당 5~7MB이고 실패 시 다시 시도하므로 넉넉히 둔다.
+export const maxDuration = 60;
 
 export default async function Home() {
   const [daily, notices, g2b] = await Promise.all([

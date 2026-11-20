@@ -121,10 +121,28 @@ async function fetchPage(op: string, bgn: string, end: string, pageNo: number) {
     throw new Error(`g2b ${op} p${pageNo}: ${(e as Error).message}`);
   }
   const body = json?.response?.body;
-  if (!body) throw new Error(`g2b ${op} p${pageNo}: bad response`);
+  if (!body) {
+    // 오류 응답은 {"nkoneps.com.response.ResponseError": {header: {resultCode, resultMsg}}} 모양으로 온다.
+    const err = Object.values((json ?? {}) as Record<string, { header?: { resultCode?: string; resultMsg?: string } }>)[0]?.header;
+    throw new Error(`g2b ${op} p${pageNo}: ${err ? `${err.resultCode} ${err.resultMsg}` : "bad response"}`);
+  }
   const raw = body.items as RawBid[] | { item?: RawBid[] } | undefined;
   const items: RawBid[] = Array.isArray(raw) ? raw : raw?.item ?? [];
   return { items, total: Number(body.totalCount) || 0 };
+}
+
+// API가 한 번에 받는 기간은 날짜 차이 6일까지다(2026-11 확인: 11/14~11/20 정상, 11/13~11/20은 07 입력범위값 초과).
+// 7일치를 받으려면 기간을 나눠서 부르고 합친다. 겹치는 공고는 latestOnly·Set에서 걸러진다.
+const WINDOW_HOURS = 84; // 3.5일 → 7일 = 2구간
+
+async function fetchRange(op: string, from: Date, to: Date): Promise<RawBid[]> {
+  const windows: [string, string][] = [];
+  for (let t = from.getTime(); t < to.getTime(); t += WINDOW_HOURS * 3600 * 1000) {
+    const wEnd = Math.min(t + WINDOW_HOURS * 3600 * 1000, to.getTime());
+    windows.push([kstStamp(new Date(t)), kstStamp(new Date(wEnd))]);
+  }
+  const parts = await Promise.all(windows.map(([bgn, end]) => fetchAll(op, bgn, end)));
+  return parts.flat();
 }
 
 async function fetchAll(op: string, bgn: string, end: string): Promise<RawBid[]> {
@@ -152,13 +170,15 @@ export async function getG2bBids(): Promise<G2bResult> {
   if (!SERVICE_KEY) return { ok: false, scanned: 0, bids: [] };
 
   const now = new Date();
-  const bgn = kstStamp(new Date(now.getTime() - DAYS * 86400 * 1000));
-  const end = kstStamp(now);
+  const from = new Date(now.getTime() - DAYS * 86400 * 1000);
 
   try {
     const [bidsRaw, regionRaw] = await Promise.all([
-      fetchAll("getBidPblancListInfoServc", bgn, end),
-      fetchAll("getBidPblancListInfoPrtcptPsblRgn", bgn, end).catch(() => null),
+      fetchRange("getBidPblancListInfoServc", from, now),
+      fetchRange("getBidPblancListInfoPrtcptPsblRgn", from, now).catch((e) => {
+        console.error("[g2b region]", e);
+        return null;
+      }),
     ]);
 
     const regionMap = new Map<string, Set<string>>();
